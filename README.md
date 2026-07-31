@@ -26,10 +26,17 @@
 
 ## 🗺️ Implementation Roadmap
 
-- [ ] **Step 1:** Proxmox VM Setup & k3s Cluster Installation
+- [x] **Step 1:** Proxmox VM Setup & k3s Cluster Installation
   - Complete Ubuntu Server OS installation on VM 100
-  - Connect via SSH (`ssh root1@192.168.1.248`)
-  - Install and verify k3s cluster (`curl -sfL https://get.k3s.io | sh -` and `kubectl get nodes`)
+  - Connect via SSH or Proxmox Console (`ssh root1@192.168.1.248`)
+  - Install k3s cluster:
+    ```bash
+    curl -sfL [https://get.k3s.io](https://get.k3s.io) | sh -
+    ```
+  - Verify cluster status and check nodes:
+    ```bash
+    sudo kubectl get nodes
+    ```
 - [ ] **Step 2:** Base Image & Profile Dockerfiles (`Dockerfile.base`, `Dockerfile.developer`, `Dockerfile.data-analyst`, `Dockerfile.devops`)
 - [ ] **Step 3:** Node.js Manager (Glue Layer & Auto-Remediation Engine)
 - [ ] **Step 4:** Frontend UI (Admin Checklist & Developer Dashboard)
