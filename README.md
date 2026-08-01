@@ -37,7 +37,13 @@
     ```bash
     sudo kubectl get nodes
     ```
-- [ ] **Step 2:** Base Image & Profile Dockerfiles (`Dockerfile.base`, `Dockerfile.developer`, `Dockerfile.data-analyst`, `Dockerfile.devops`)
+- [x] **Step 2:** Base Image & Profile Dockerfiles
+  - Created `Dockerfile.base`, `Dockerfile.developer`, `Dockerfile.data-analyst`, and `Dockerfile.devops`
+  - Built Docker images locally on VM 100
+  - Resolved containerd import syntax and imported images directly into k3s runtime:
+    ```bash
+    sudo docker save workstation-profile:<profile> | sudo k3s ctr images import -
+    ```
 - [ ] **Step 3:** Node.js Manager (Glue Layer & Auto-Remediation Engine)
 - [ ] **Step 4:** Frontend UI (Admin Checklist & Developer Dashboard)
 - [ ] **Step 5:** Testing, Trivy Scans & Compliance Audit Logging
