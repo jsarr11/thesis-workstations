@@ -29,7 +29,7 @@
 - **Virtualization OS:** Ubuntu Server 22.04.5 LTS (`ubuntu-22.04.5-live-server-amd64.iso`)
 - **Container Orchestration:** k3s (Lightweight Kubernetes)
 - **Database:** PostgreSQL 15 (Dockerized / Alpine)
-- **Application Stack:** Node.js v20 LTS (Manager/Glue Layer), Flutter Web (Frontend UI), OpenVSCode Server (Workstation Pods)
+- **Application Stack:** Node.js v20 LTS (Manager/Glue Layer, Static UI Server), OpenVSCode Server (Workstation Pods)
 
 ---
 
@@ -53,10 +53,13 @@
     ```bash
     sudo docker save workstation-profile:<profile> | sudo k3s ctr images import -
     ```
-- [ ] **Step 3:** Node.js Manager (Glue Layer & Auto-Remediation Engine)
+- [x] **Step 3:** Node.js Manager (Glue Layer API)
   - [x] Deploy & initialize PostgreSQL database container with 4 normalized tables (`profiles`, `policy_rules`, `workstation_requests`, `audit_logs`)
   - [x] Upgrade environment to Node.js v20 LTS & Initialize Express API Server with DB connection
-  - [ ] Implement Kubernetes API Client & Trivy Scan Integration
+  - [x] Implement initial Kubernetes API Client setup (`k8s.js`) and endpoints
   - [ ] Build Auto-Remediation Engine (YAML AST Parsing & Mutating)
-- [ ] **Step 4:** Frontend UI (Admin Checklist & Developer Dashboard)
-- [ ] **Step 5:** Testing, Trivy Scans & Compliance Audit Logging
+- [x] **Step 4:** Frontend UI (Admin Checklist & Developer Dashboard)
+  - [x] Develop Developer Portal (`index.html`) for Workstation Request form
+  - [x] Develop Admin Dashboard (`admin.html`) with dynamic tabs for Policy Checklist, Active Workstations, and Audit Logs
+  - [x] Serve interfaces via Express Static router and link to DB endpoints
+- [ ] **Step 5:** Testing, Real Provisioning, Trivy Scans & Compliance Audit Logging
