@@ -56,8 +56,8 @@
 - [x] **Step 3:** Node.js Manager (Glue Layer API)
   - [x] Deploy & initialize PostgreSQL database container with 4 normalized tables (`profiles`, `policy_rules`, `workstation_requests`, `audit_logs`)
   - [x] Upgrade environment to Node.js v20 LTS & Initialize Express API Server with DB connection
-  - [x] Build Express REST API endpoints (Current status: Mock Provisioning State)
-  - [x] Implement Kubernetes API Client setup (`k8s.js`) for real k3s provisioning
+  - [x] Implement Kubernetes API Client setup (`k8s.js`) for real k3s provisioning & dynamic Namespace binding
+  - [x] Transition from Mock to Real Provisioning (`server.js` integration with `k8sCoreApi` for Pod & NodePort Service deployment)
   - [ ] Build Auto-Remediation Engine (YAML AST Parsing & Mutating)
 - [x] **Step 4:** Frontend UI (Admin Checklist & Developer Dashboard)
   - [x] Develop Developer Portal (`index.html`) for Workstation Request form
