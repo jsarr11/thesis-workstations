@@ -16,10 +16,19 @@
 - **Network Interface (DHCP IP):** `192.168.1.248/24`
 - **Services Enabled:** OpenSSH Server (`sshd`)
 
+### Database Infrastructure (PostgreSQL Container)
+- **Container Name:** `thesis-postgres`
+- **Database Name:** `thesis_workstations_db`
+- **User:** `thesis_admin`
+- **Password:** `thesis_password123`
+- **Port:** `5432`
+- **Storage Volume:** `pgdata`
+
 ### Core Technologies
 - **Hypervisor:** Proxmox VE
 - **Virtualization OS:** Ubuntu Server 22.04.5 LTS (`ubuntu-22.04.5-live-server-amd64.iso`)
 - **Container Orchestration:** k3s (Lightweight Kubernetes)
+- **Database:** PostgreSQL 15 (Dockerized / Alpine)
 - **Application Stack:** Node.js (Manager/Glue Layer), Flutter Web (Frontend UI), OpenVSCode Server (Workstation Pods)
 
 ---
@@ -31,7 +40,7 @@
   - Connect via SSH or Proxmox Console (`ssh root1@192.168.1.248`)
   - Install k3s cluster:
     ```bash
-    curl -sfL [https://get.k3s.io](https://get.k3s.io) | sh -
+    curl -sfL https://get.k3s.io | sh -
     ```
   - Verify cluster status and check nodes:
     ```bash
@@ -45,5 +54,9 @@
     sudo docker save workstation-profile:<profile> | sudo k3s ctr images import -
     ```
 - [ ] **Step 3:** Node.js Manager (Glue Layer & Auto-Remediation Engine)
+  - [x] Deploy & initialize PostgreSQL database container with 4 normalized tables (`profiles`, `policy_rules`, `workstation_requests`, `audit_logs`)
+  - [ ] Initialize Node.js Express API & Database Connection
+  - [ ] Implement Kubernetes API Client & Trivy Scan Integration
+  - [ ] Build Auto-Remediation Engine (YAML AST Parsing & Mutating)
 - [ ] **Step 4:** Frontend UI (Admin Checklist & Developer Dashboard)
 - [ ] **Step 5:** Testing, Trivy Scans & Compliance Audit Logging
