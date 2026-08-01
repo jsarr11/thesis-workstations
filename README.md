@@ -29,7 +29,7 @@
 - **Virtualization OS:** Ubuntu Server 22.04.5 LTS (`ubuntu-22.04.5-live-server-amd64.iso`)
 - **Container Orchestration:** k3s (Lightweight Kubernetes)
 - **Database:** PostgreSQL 15 (Dockerized / Alpine)
-- **Application Stack:** Node.js (Manager/Glue Layer), Flutter Web (Frontend UI), OpenVSCode Server (Workstation Pods)
+- **Application Stack:** Node.js v20 LTS (Manager/Glue Layer), Flutter Web (Frontend UI), OpenVSCode Server (Workstation Pods)
 
 ---
 
@@ -40,7 +40,7 @@
   - Connect via SSH or Proxmox Console (`ssh root1@192.168.1.248`)
   - Install k3s cluster:
     ```bash
-    curl -sfL https://get.k3s.io | sh -
+    curl -sfL [https://get.k3s.io](https://get.k3s.io) | sh -
     ```
   - Verify cluster status and check nodes:
     ```bash
@@ -55,7 +55,7 @@
     ```
 - [ ] **Step 3:** Node.js Manager (Glue Layer & Auto-Remediation Engine)
   - [x] Deploy & initialize PostgreSQL database container with 4 normalized tables (`profiles`, `policy_rules`, `workstation_requests`, `audit_logs`)
-  - [ ] Initialize Node.js Express API & Database Connection
+  - [x] Upgrade environment to Node.js v20 LTS & Initialize Express API Server with DB connection
   - [ ] Implement Kubernetes API Client & Trivy Scan Integration
   - [ ] Build Auto-Remediation Engine (YAML AST Parsing & Mutating)
 - [ ] **Step 4:** Frontend UI (Admin Checklist & Developer Dashboard)
