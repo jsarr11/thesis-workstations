@@ -33,3 +33,5 @@ for img in "${IMAGES[@]}"; do
 done
 
 echo "=== [CD] Deployment Completed Successfully! ==="
+
+# test line
