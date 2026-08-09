@@ -14,7 +14,7 @@
 - **Username:** `root1`
 - **Password:** `rootroot1`
 - **Network Interface (DHCP IP):** `192.168.1.248/24`
-- **Services Enabled:** OpenSSH Server (`sshd`)
+- **Services Enabled:** OpenSSH Server (`sshd`), GitHub Actions Self-Hosted Runner
 
 ### Database Infrastructure (PostgreSQL Container)
 - **Container Name:** `thesis-postgres`
@@ -30,6 +30,7 @@
 - **Container Orchestration:** k3s (Lightweight Kubernetes)
 - **Database:** PostgreSQL 15 (Dockerized / Alpine)
 - **Application Stack:** Node.js v20 LTS (Manager/Glue Layer, Static UI Server), OpenVSCode Server (Workstation Pods)
+- **CI/CD:** GitHub Actions (via local Self-Hosted Runner), PM2 Process Manager
 
 ---
 
@@ -63,4 +64,9 @@
   - [x] Develop Developer Portal (`index.html`) for Workstation Request form
   - [x] Develop Admin Dashboard (`admin.html`) with dynamic tabs for Policy Checklist, Active Workstations, and Audit Logs
   - [x] Serve interfaces via Express Static router and link to DB endpoints
-- [ ] **Step 5:** Testing, Real Provisioning, Trivy Scans & Compliance Audit Logging
+- [x] **Step 5:** Continuous Deployment (CI/CD) Pipeline
+  - [x] Implement local deployment bash script (`deploy.sh`) for Git pulls and PM2 restarts
+  - [x] Install and configure GitHub Actions Self-Hosted Runner on VM 100
+  - [x] Create `.github/workflows/deploy.yml` configured to target `runs-on: self-hosted`
+  - [x] Achieve zero-downtime, fully automated deployments upon code pushes to the `main` branch
+- [ ] **Step 6:** Testing, Real Provisioning, Trivy Scans & Compliance Audit Logging
