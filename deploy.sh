@@ -25,8 +25,8 @@ IMAGES=(
 for img in "${IMAGES[@]}"; do
   # Ελέγχει αν το image υπάρχει ήδη έτοιμο στο τοπικό Docker engine
   if sudo docker image inspect "$img" >/dev/null 2>&1; then
-    echo "[+] Βρέθηκε το $img στο Docker. Μεταφορά στο K3s containerd..."
-    sudo docker save "$img" | sudo k3s ctr images import -
+    echo "[+] Βρέθηκε το $img στο Docker. Μεταφορά στο K3s containerd (namespace k8s.io)..."
+    sudo docker save "$img" | sudo k3s ctr -n k8s.io images import -
   else
     echo "[-] Προσοχή: Το image $img ΔΕΝ βρέθηκε στο Docker. Αγνοείται."
   fi
