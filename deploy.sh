@@ -1,5 +1,6 @@
 #!/bin/bash
 echo "=== [CD] Starting Deployment on Proxmox VM ==="
+echo "TEST LINE"
 
 # 1. Μετάβαση στον φάκελο του Manager
 cd ~/thesis-workstations/manager || exit 1
