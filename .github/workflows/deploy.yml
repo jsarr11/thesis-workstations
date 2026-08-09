@@ -1,0 +1,15 @@
+name: Deploy to Proxmox VM
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Run local deployment script
+        run: |
+          cd ~/thesis-workstations
+          ./deploy.sh
