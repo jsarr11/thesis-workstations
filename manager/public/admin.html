@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <title>Security Admin Dashboard</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #090d16; color: #f8fafc; margin: 0; padding: 30px; }
+        h1 { color: #38bdf8; border-bottom: 2px solid #1e293b; padding-bottom: 10px; }
+        .nav { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .nav a { color: #38bdf8; text-decoration: none; font-weight: bold; margin-right: 20px; }
+        
+        /* Tab Navigation */
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #334155; }
+        .tab-btn { background: #1e293b; color: #94a3b8; border: none; padding: 12px 24px; border-radius: 8px 8px 0 0; font-weight: bold; cursor: pointer; font-size: 15px; }
+        .tab-btn.active { background: #0284c7; color: white; border-bottom: 3px solid #38bdf8; }
+        
+        .tab-content { display: none; background: #1e293b; border: 1px solid #334155; padding: 25px; border-radius: 0 0 8px 8px; }
+        .tab-content.active { display: block; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #334155; padding: 12px; text-align: left; }
+        th { background: #0f172a; color: #38bdf8; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; background: #064e3b; color: #34d399; }
+        
+        /* Toggle Switch Checkbox Styling */
+        .switch { position: relative; display: inline-block; width: 46px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #475569; transition: .3s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+        input:checked + .slider { background-color: #10b981; }
+        input:checked + .slider:before { transform: translateX(22px); }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <div>
+            <a href="/">⬅️ Developer Portal</a>
+            <a href="/admin">🛡️ Admin Dashboard</a>
+        </div>
+        <span style="color: #94a3b8; font-size: 14px;">System Status: <strong style="color: #10b981;">CONNECTED TO POSTGRESQL</strong></span>
+    </div>
+
+    <h1>🛡️ Security & Compliance Dashboard (ISO 27001 / CIS)</h1>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('policies')">⚙️ Policy Checklist (Admin Rules)</button>
+        <button class="tab-btn" onclick="switchTab('workstations')">🖥️ Active Workstations</button>
+        <button class="tab-btn" onclick="switchTab('audit')">📜 Audit Trail & Evidence Logs</button>
+    </div>
+
+    <div id="policies" class="tab-content active">
+        <h3 style="color: #38bdf8; margin-top: 0;">Διαχείριση Κανόνων Ασφαλείας ανά Προφίλ</h3>
+        <p style="color: #94a3b8;">Ενεργοποιήστε ή απενεργοποιήστε τους ελέγχους compliance. Οι αλλαγές αποθηκεύονται άμεσα στη βάση δεδομένων.</p>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Profile</th>
+                    <th>Rule Key</th>
+                    <th>Description</th>
+                    <th>ISO / CIS Control</th>
+                    <th>Value</th>
+                    <th>Status (On/Off)</th>
+                </tr>
+            </thead>
+            <tbody id="policiesTable">
+                <tr><td colspan="6">Φόρτωση κανόνων από τη βάση...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="workstations" class="tab-content">
+        <h3 style="color: #38bdf8; margin-top: 0;">Ενεργά Workstation Pods</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Profile</th>
+                    <th>Pod Name</th>
+                    <th>Client IP</th>
+                    <th>Status</th>
+                    <th>Access URL</th>
+                </tr>
+            </thead>
+            <tbody id="workstationsTable">
+                <tr><td colspan="6">Φόρτωση δεδομένων...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="audit" class="tab-content">
+        <h3 style="color: #38bdf8; margin-top: 0;">Ιστορικό Ελέγχων & Compliance Evidence</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>User</th>
+                    <th>Stage</th>
+                    <th>Rule Evaluated</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="auditTable">
+                <tr><td colspan="5">Φόρτωση δεδομένων...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Tab Switcher
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(tabId).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // 1. Φόρτωση Policies & Checkboxes
+        async function loadPolicies() {
+            const res = await fetch('/api/policies');
+            const policies = await res.json();
+            
+            const tbody = document.getElementById('policiesTable');
+            if (policies.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">Ο πίνακας policy_rules είναι ακόμα άδειος στη βάση δεδομένων.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = policies.map(p => `
+                <tr>
+                    <td><b>${p.profile_name}</b></td>
+                    <td><code>${p.rule_key}</code></td>
+                    <td>${p.description}</td>
+                    <td><span style="color:#f59e0b;">${p.iso_control}</span></td>
+                    <td><code>${p.custom_value || '-'}</code></td>
+                    <td>
+                        <label class="switch">
+                            <input type="checkbox" ${p.is_enabled ? 'checked' : ''} onchange="togglePolicy(${p.id}, this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 2. Ενημέρωση Κανόνα στη Βάση (Toggle Checkbox)
+        async function togglePolicy(ruleId, isEnabled) {
+            await fetch('/api/policies/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rule_id: ruleId, is_enabled: isEnabled })
+            });
+            console.log(`Policy ${ruleId} updated to ${isEnabled}`);
+        }
+
+        // 3. Φόρτωση Workstations & Audit Logs
+        async function loadAdminData() {
+            loadPolicies();
+
+            // Workstations
+            const resW = await fetch('/api/workstations');
+            const workstations = await resW.json();
+            document.getElementById('workstationsTable').innerHTML = workstations.map(w => `
+                <tr>
+                    <td><b>${w.username}</b></td>
+                    <td>${w.profile_name}</td>
+                    <td><code>${w.pod_name}</code></td>
+                    <td>${w.client_ip}</td>
+                    <td><span class="badge">${w.status}</span></td>
+                    <td><a href="${w.access_url}" target="_blank" style="color:#38bdf8;">Open IDE</a></td>
+                </tr>
+            `).join('') || '<tr><td colspan="6">Δεν υπάρχουν ενεργά workstations.</td></tr>';
+
+            // Audit Logs
+            const resA = await fetch('/api/audit-logs');
+            const logs = await resA.json();
+            document.getElementById('auditTable').innerHTML = logs.map(l => `
+                <tr>
+                    <td>${new Date(l.timestamp).toLocaleString()}</td>
+                    <td>${l.username}</td>
+                    <td><code>${l.stage}</code></td>
+                    <td>${l.rule_evaluated}</td>
+                    <td><span class="badge">${l.status}</span></td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Δεν υπάρχουν καταγεγραμμένα audit logs.</td></tr>';
+        }
+
+        loadAdminData();
+    </script>
+</body>
+</html>

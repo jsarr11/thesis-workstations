@@ -1,0 +1,21 @@
+# Base Image: Gitpod OpenVSCode Server (Ubuntu-based)
+FROM gitpod/openvscode-server:latest
+
+LABEL maintainer="thesis-admin" \
+      security.hardened="true" \
+      compliance.standard="ISO27001-AnnexA8-CIS"
+
+USER root
+
+# Clean packages & install basic essential utilities
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    jq \
+    unzip \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# CIS Docker Benchmark 4.1: Ensure non-root user (USER 1000)
+USER 1000
+EXPOSE 3000

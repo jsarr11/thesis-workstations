@@ -1,0 +1,14 @@
+FROM workstation-base:v1
+
+USER root
+
+# Install Python ML/Data ecosystem & DB clients
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    python3-dev \
+    postgresql-client \
+    sqlite3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir pandas numpy matplotlib seaborn scikit-learn jupyterlab
+
+USER 1000

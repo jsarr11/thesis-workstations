@@ -1,0 +1,17 @@
+FROM workstation-base:v1
+
+USER root
+
+# Install IaC Tools (kubectl, helm, terraform) & Trivy Scanner
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gnupg software-properties-common wget \
+    && wget -qO- https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /etc/apt/keyrings/trivy.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | tee /etc/apt/sources.list.d/trivy.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    trivy \
+    && curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl \
+    && rm kubectl \
+    && rm -rf /var/lib/apt/lists/*
+
+USER 1000

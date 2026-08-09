@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: thesis-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: thesis_admin
+      POSTGRES_PASSWORD: thesis_password123
+      POSTGRES_DB: thesis_workstations_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  pgdata:

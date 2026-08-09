@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <title>Developer Workstation Portal</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 40px; display: flex; justify-content: center; }
+        .card { background: #1e293b; border: 1px solid #334155; padding: 30px; border-radius: 12px; width: 100%; max-width: 500px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        h2 { color: #38bdf8; margin-top: 0; border-bottom: 2px solid #334155; padding-bottom: 10px; }
+        label { display: block; margin-top: 15px; font-weight: bold; color: #94a3b8; }
+        input, select { width: 100%; padding: 12px; margin-top: 5px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; box-sizing: border-box; }
+        button { width: 100%; margin-top: 20px; padding: 12px; background: #0284c7; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #0369a1; }
+        .result { margin-top: 20px; padding: 15px; border-radius: 6px; background: #064e3b; border: 1px solid #059669; display: none; }
+        .result a { color: #34d399; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>💻 Request Cloud Workstation</h2>
+        <form id="requestForm">
+            <label for="username">Username / ID:</label>
+            <input type="text" id="username" placeholder="π.χ. root1" required>
+
+            <label for="profileSelect">Workstation Profile:</label>
+            <select id="profileSelect" required>
+                <option value="">Φόρτωση Προφίλ...</option>
+            </select>
+
+            <button type="submit">🚀 Launch Workstation Pod</button>
+        </form>
+
+        <div id="resultBox" class="result">
+            <strong>✅ Το Workstation είναι έτοιμο!</strong><br>
+            <span id="podInfo"></span><br><br>
+            <a id="accessLink" href="#" target="_blank">🔗 Άνοιγμα OpenVSCode Server</a>
+        </div>
+    </div>
+
+    <script>
+        // Φόρτωση των προφίλ από τη βάση δεδομένων
+        async function loadProfiles() {
+            const res = await fetch('/api/profiles');
+            const profiles = await res.json();
+            const select = document.getElementById('profileSelect');
+            select.innerHTML = profiles.map(p => `<option value="${p.id}">${p.display_name} (${p.name})</option>`).join('');
+        }
+
+        // Υποβολή αιτήματος
+        document.getElementById('requestForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const profile_id = document.getElementById('profileSelect').value;
+
+            const res = await fetch('/api/workstations/request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, profile_id })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('podInfo').innerText = `Pod Name: ${data.data.pod_name} | Status: ${data.data.status}`;
+                document.getElementById('accessLink').href = data.data.access_url;
+                document.getElementById('resultBox').style.display = 'block';
+            }
+        });
+
+        loadProfiles();
+    </script>
+</body>
+</html>
