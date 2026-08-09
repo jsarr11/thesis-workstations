@@ -105,24 +105,23 @@ app.post('/api/workstations/request', async (req, res) => {
       }
     };
 
-    // 4. Αποστολή αιτημάτων στο k3s με τα σωστά ορίσματα στη σειρά
+    // 4. Αποστολή αιτημάτων στο k3s με τη μορφή Object (named parameters)
     console.log(`[K8s] Deploying Pod ${podName} in namespace: ${k8sClient.k8sNamespace}...`);
-    console.log('[DEBUG] Namespace variable type:', typeof k8sClient.k8sNamespace, 'Value:', k8sClient.k8sNamespace);
     
-    await k8sClient.k8sCoreApi.createNamespacedPod(
-        k8sClient.k8sNamespace,  // 1ο όρισμα: Το Namespace ('default')
-        podManifest              // 2ο όρισμα: Το αντικείμενο του Pod
-    );
+    await k8sClient.k8sCoreApi.createNamespacedPod({
+      namespace: k8sClient.k8sNamespace,
+      body: podManifest
+    });
 
     console.log(`[K8s] Creating Service ${podName}-svc...`);
     
-    await k8sClient.k8sCoreApi.createNamespacedService(
-        k8sClient.k8sNamespace,  // 1ο όρισμα: Το Namespace ('default')
-        serviceManifest          // 2ο όρισμα: Το αντικείμενο του Service
-    );
+    const svcResponse = await k8sClient.k8sCoreApi.createNamespacedService({
+      namespace: k8sClient.k8sNamespace,
+      body: serviceManifest
+    });
 
     // 5. Λήψη του τυχαίου NodePort που άνοιξε το k3s και δημιουργία του URL
-    const nodePort = svcResponse.body.spec.ports[0].nodePort;
+    const nodePort = svcResponse.spec?.ports[0]?.nodePort || svcResponse.body?.spec?.ports[0]?.nodePort;
     const access_url = `http://192.168.1.248:${nodePort}/?folder=/home/workspace`;
 
     // 6. Καταγραφή στη Βάση Δεδομένων
