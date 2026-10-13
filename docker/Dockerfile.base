@@ -1,9 +1,16 @@
 # Base Image: Gitpod OpenVSCode Server (Ubuntu-based)
-FROM gitpod/openvscode-server:latest
+# Pinned σε συγκεκριμένη έκδοση + digest (όχι :latest), ώστε το build να είναι αναπαραγώγιμο
+# και το Trivy report να αντιστοιχεί σε γνωστή έκδοση. Η 1.105.1 είναι η έκδοση του προηγούμενου :latest.
+ARG OPENVSCODE_VERSION=1.105.1
+ARG OPENVSCODE_DIGEST=sha256:5e7b8750749f282940a799ed59ccd02fac698ef6744f9113ac01c0ef8e76485e
+FROM gitpod/openvscode-server:${OPENVSCODE_VERSION}@${OPENVSCODE_DIGEST}
 
+ARG OPENVSCODE_VERSION
 LABEL maintainer="thesis-admin" \
       security.hardened="true" \
-      compliance.standard="ISO27001-AnnexA8-CIS"
+      compliance.standard="ISO27001-AnnexA8-CIS" \
+      org.opencontainers.image.title="workstation-base" \
+      org.opencontainers.image.base.name="docker.io/gitpod/openvscode-server:${OPENVSCODE_VERSION}"
 
 USER root
 

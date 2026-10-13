@@ -21,7 +21,9 @@ Cloud development environments (Gitpod, GitHub Codespaces, self-hosted VS Code) 
 - **Real provisioning on Kubernetes (k3s)** — the Manager creates a Pod and a NodePort Service, waits until the Pod is actually *Ready*, and only then returns the access URL.
 - **Failure handling** — image or startup failures (e.g. `ErrImageNeverPull`) are detected, the Pod/Service are cleaned up and the request is marked `FAILED` with the reason.
 - **Lifecycle & reconciliation** — workstations can be terminated from the admin dashboard; the database is reconciled with the real cluster state so the UI never shows Pods that no longer exist.
-- **Admin dashboard** — policy checklist (ON/OFF per rule and profile), workstation overview with history, and a compliance **audit trail** stored as JSON in PostgreSQL.
+- **Time-limited sessions** — every workstation expires after a configurable time (default **10 hours**). A session sweeper in the Manager deletes expired Pods and logs the event; `activeDeadlineSeconds` on the Pod acts as a Kubernetes-level safety net even if the Manager is down.
+- **Admin dashboard** — policy checklist (ON/OFF per rule and profile), workstation overview with history, and a compliance **audit trail** stored as JSON in PostgreSQL, exportable **per day as JSON or CSV**.
+- **Operations** — nightly PostgreSQL backups plus an automatic export of the previous day's audit trail, and a Trivy-based vulnerability report for every workstation image.
 - **Continuous deployment** — every push to `main` is deployed to the lab VM by a self-hosted GitHub Actions runner, with fail-fast scripting, automatic rebuild/import of missing images and a post-deploy health check.
 
 > **Note:** in the current phase the generated workstation manifests are **intentionally un-hardened**. They form the *baseline* against which the auto-remediation engine (next phase) is measured — before/after comparisons are part of the evaluation.
@@ -86,15 +88,19 @@ All profiles inherit from `workstation-base:v1` (OpenVSCode Server, non-root `US
 .
 ├── .github/workflows/deploy.yml   # CD: runs deploy.sh on the self-hosted runner on every push to main
 ├── deploy.sh                      # pull → npm ci → pm2 restart → build/import missing images → health check
+├── deploy/runner-sudoers          # least-privilege sudo rule for the CI runner (docker + k3s only)
 ├── database/
 │   ├── docker-compose.yml         # PostgreSQL 15 (credentials from database/.env)
 │   ├── .env.example
-│   └── init.sql                   # schema + the three workstation profiles
+│   ├── init.sql                   # schema + the three workstation profiles
+│   ├── backup.sh                  # pg_dump + previous day's audit export, 14-day retention
+│   └── thesis-db-backup.cron      # nightly schedule (/etc/cron.d)
 ├── docker/
-│   ├── Dockerfile.base            # OpenVSCode Server + non-root user + minimal tools
+│   ├── Dockerfile.base            # OpenVSCode Server (pinned version + digest) + non-root user
 │   ├── Dockerfile.developer
 │   ├── Dockerfile.data-analyst
-│   └── Dockerfile.devops
+│   ├── Dockerfile.devops
+│   └── scan-images.sh             # Trivy vulnerability reports (optional 0 Critical / 0 High gate)
 └── manager/                       # Glue layer (Node.js)
     ├── server.js                  # REST API + static UI
     ├── workstations.js            # provisioning pipeline, readiness, cleanup, termination, reconciliation
@@ -148,15 +154,39 @@ After the first setup, `deploy.sh` keeps everything up to date — including reb
 | `GET` | `/api/workstations` | Workstations (reconciled with the cluster) |
 | `DELETE` | `/api/workstations/:id` | Terminate a workstation (Pod + Service) |
 | `GET` | `/api/audit-logs` | Compliance audit trail |
+| `GET` | `/api/audit-logs/export?date=YYYY-MM-DD&format=json\|csv` | Download one day of audit records (day computed in `REPORT_TIMEZONE`) |
+
+## Operations
+
+```bash
+# Least-privilege sudo for the CI runner (lets deploy.sh build/import images)
+sudo visudo -c -f deploy/runner-sudoers && sudo install -m 0440 deploy/runner-sudoers /etc/sudoers.d/github-runner
+
+# Nightly backups (02:00) → /var/backups/thesis-db, log in /var/log/thesis-db-backup.log
+sudo cp database/thesis-db-backup.cron /etc/cron.d/thesis-db-backup
+sudo bash database/backup.sh                        # run once now
+
+# Restore a backup (into an empty database)
+gunzip -c /var/backups/thesis-db/thesis-db_<stamp>.sql.gz | sudo docker exec -i thesis-postgres psql -U thesis_admin -d thesis_workstations_db
+
+# Vulnerability reports for all workstation images → reports/<date>/
+bash docker/scan-images.sh            # report only
+bash docker/scan-images.sh --gate     # fail on any CRITICAL/HIGH finding
+```
+
+Configuration (`manager/.env`): `SESSION_TTL_HOURS` (default `10`), `REPORT_TIMEZONE` (default `Europe/Athens`), `PUBLIC_HOST`, `POD_READY_TIMEOUT_MS` — see `manager/.env.example`.
 
 ## Roadmap
 
 - [x] **Infrastructure** — Proxmox VM, k3s cluster
-- [x] **Images** — non-root base image + three profile images (pinning the upstream tag is planned)
+- [x] **Images** — non-root base image pinned by version and digest + three profile images
+- [x] **Pre-baked compliance evidence** — Trivy vulnerability reports per image
 - [x] **Manager & database** — Express API, PostgreSQL schema, Kubernetes client
 - [x] **Real provisioning** — Pod + NodePort Service, readiness wait, failure cleanup, termination, reconciliation
-- [x] **UI** — developer portal and admin dashboard
+- [x] **Sessions** — 10-hour workstation lifetime enforced by the Manager and by Kubernetes
+- [x] **UI** — developer portal and admin dashboard with daily audit export
 - [x] **CI/CD** — self-hosted runner, fail-fast deploy script, automatic image rebuild/import, health check
+- [x] **Operations** — nightly database backups and audit archives, least-privilege runner permissions
 - [ ] **Phase 2 — compliance engine**
   - [ ] Stage 1: image scanning with Trivy (0 Critical / 0 High gate)
   - [ ] Stage 2: manifest validation & auto-remediation (securityContext, non-root, read-only root FS, dropped capabilities, resource limits, NetworkPolicies)

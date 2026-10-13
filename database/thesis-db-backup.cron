@@ -1,0 +1,6 @@
+# Ημερήσιο backup της PostgreSQL και των audit logs, κάθε μέρα στις 02:00 (ώρα του VM).
+# Εγκατάσταση:  sudo cp database/thesis-db-backup.cron /etc/cron.d/thesis-db-backup
+# (το όνομα του αρχείου στο /etc/cron.d δεν πρέπει να έχει τελεία)
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+0 2 * * * root bash /home/root1/thesis-workstations/database/backup.sh >> /var/log/thesis-db-backup.log 2>&1

@@ -39,7 +39,8 @@ pm2 save
 docker_has() { sudo -n docker image inspect "$1" >/dev/null 2>&1; }
 
 echo "=== Checking workstation images (Docker & k3s) ==="
-if sudo -n true 2>/dev/null; then
+# Ελέγχουμε μόνο τις δύο εντολές που χρειαζόμαστε (λειτουργεί και με τον περιορισμένο κανόνα του deploy/runner-sudoers)
+if sudo -n docker info >/dev/null 2>&1 && sudo -n k3s ctr version >/dev/null 2>&1; then
   BUILT_ANY=0
   for profile in "${PROFILES[@]}"; do
     img="workstation-profile:$profile"

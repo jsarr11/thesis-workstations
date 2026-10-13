@@ -79,7 +79,9 @@
                 const data = await res.json();
                 if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
 
-                document.getElementById('podInfo').innerText = `Pod Name: ${data.data.pod_name} | Status: ${data.data.status}`;
+                const expiresAt = new Date(data.data.expires_at).toLocaleString('el-GR', { dateStyle: 'short', timeStyle: 'short' });
+                document.getElementById('podInfo').innerText =
+                    `Pod Name: ${data.data.pod_name} | Status: ${data.data.status}\n⏱️ Η συνεδρία λήγει αυτόματα: ${expiresAt}`;
                 document.getElementById('accessLink').href = data.data.access_url;
                 resultBox.style.display = 'block';
             } catch (err) {

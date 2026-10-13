@@ -114,11 +114,12 @@ app.get('/api/workstations', async (req, res) => {
       console.error('[WARN] Reconcile with cluster failed:', workstations.describeK8sError(err))
     );
     const result = await pool.query(`
-      SELECT wr.*, p.display_name as profile_name
+      SELECT wr.*, p.display_name as profile_name,
+             (wr.created_at + make_interval(secs => $1)) AT TIME ZONE current_setting('TimeZone') AS expires_at
       FROM workstation_requests wr
       JOIN profiles p ON wr.profile_id = p.id
       ORDER BY wr.created_at DESC
-    `);
+    `, [workstations.SESSION_TTL_SECONDS]);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -142,6 +143,61 @@ app.get('/api/audit-logs', async (req, res) => {
   }
 });
 
+// 9. GET /api/audit-logs/export?date=YYYY-MM-DD&format=json|csv - Ημερήσιο export (compliance evidence)
+const REPORT_TIMEZONE = process.env.REPORT_TIMEZONE || 'Europe/Athens';
+
+function toCsv(rows) {
+  const columns = ['id', 'timestamp_utc', 'timestamp_local', 'username', 'pod_name', 'stage', 'rule_evaluated', 'status', 'details'];
+  const cell = (value) => {
+    const text = value === null || value === undefined ? '' : (typeof value === 'object' ? JSON.stringify(value) : String(value));
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+  return [columns.join(','), ...rows.map((r) => columns.map((c) => cell(r[c])).join(','))].join('\r\n') + '\r\n';
+}
+
+app.get('/api/audit-logs/export', async (req, res) => {
+  const date = String(req.query.date || '');
+  const format = String(req.query.format || 'json').toLowerCase();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
+    return res.status(400).json({ error: 'Η ημερομηνία πρέπει να είναι της μορφής YYYY-MM-DD' });
+  }
+  if (!['json', 'csv'].includes(format)) {
+    return res.status(400).json({ error: 'Το format πρέπει να είναι json ή csv' });
+  }
+
+  try {
+    // Τα timestamps αποθηκεύονται σε UTC. Η "ημέρα" υπολογίζεται στη ζώνη ώρας REPORT_TIMEZONE.
+    const result = await pool.query(`
+      SELECT al.id,
+             to_char(al.timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS timestamp_utc,
+             to_char(al.timestamp AT TIME ZONE 'UTC' AT TIME ZONE $2, 'YYYY-MM-DD HH24:MI:SS') AS timestamp_local,
+             wr.username, wr.pod_name, al.stage, al.rule_evaluated, al.status, al.details
+      FROM audit_logs al
+      LEFT JOIN workstation_requests wr ON al.workstation_id = wr.id
+      WHERE (al.timestamp AT TIME ZONE 'UTC' AT TIME ZONE $2)::date = $1::date
+      ORDER BY al.timestamp ASC
+    `, [date, REPORT_TIMEZONE]);
+
+    const filename = `audit-logs-${date}.${format}`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    if (format === 'csv') {
+      res.type('text/csv; charset=utf-8').send('﻿' + toCsv(result.rows)); // BOM για σωστά ελληνικά στο Excel
+    } else {
+      res.json({
+        report: 'Compliance audit trail',
+        date,
+        timezone: REPORT_TIMEZONE,
+        exported_at: new Date().toISOString(),
+        count: result.rows.length,
+        records: result.rows,
+      });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to export audit logs' });
+  }
+});
+
 // Δρομολόγηση για τις σελίδες HTML
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -153,4 +209,5 @@ app.get('/admin', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[SERVER] Manager API & Frontend UI running on port ${PORT}`);
+  workstations.startSessionSweeper();
 });

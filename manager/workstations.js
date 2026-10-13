@@ -5,6 +5,19 @@ const { k8sCoreApi, k8sNamespace } = require('./k8s');
 const READY_TIMEOUT_MS = parseInt(process.env.POD_READY_TIMEOUT_MS || '120000', 10);
 const POLL_INTERVAL_MS = 2000;
 const ACTIVE_STATUSES = ['PENDING', 'DEPLOYING', 'RUNNING'];
+const TERMINAL_STATUSES = ['TERMINATED', 'FAILED', 'EXPIRED'];
+
+// Μέγιστη διάρκεια συνεδρίας (session) ενός workstation — προεπιλογή 10 ώρες.
+const SESSION_TTL_HOURS = Number.parseFloat(process.env.SESSION_TTL_HOURS || '10');
+const SESSION_TTL_SECONDS = Math.round(SESSION_TTL_HOURS * 3600);
+// Δίχτυ ασφαλείας στο Kubernetes: το kubelet τερματίζει το Pod λίγο μετά τη λήξη, ακόμα κι αν ο Manager δεν τρέχει.
+const POD_DEADLINE_GRACE_SECONDS = 300;
+const SESSION_SWEEP_INTERVAL_MS = 60000;
+
+if (!Number.isFinite(SESSION_TTL_SECONDS) || SESSION_TTL_SECONDS <= 0) {
+  console.error('[CRITICAL] SESSION_TTL_HOURS must be a positive number.');
+  process.exit(1);
+}
 
 // Kubernetes object names: DNS-1123 (πεζά, αριθμοί, παύλα). Κρατάμε περιθώριο για το suffix "-xxxx-svc".
 const USERNAME_PATTERN = /^[a-z0-9]([a-z0-9-]{0,28}[a-z0-9])?$/;
@@ -37,6 +50,7 @@ function buildManifests(podName, imageTag) {
       labels: { app: podName, 'managed-by': 'thesis-manager' },
     },
     spec: {
+      activeDeadlineSeconds: SESSION_TTL_SECONDS + POD_DEADLINE_GRACE_SECONDS,
       containers: [{
         name: 'workspace',
         image: imageTag,
@@ -125,8 +139,18 @@ async function setStatus(workstationId, status, extra = {}) {
       WHERE id = $1`,
     // Το $5 είναι ξεχωριστή boolean παράμετρος: αν ξαναχρησιμοποιούσαμε το $2, η PostgreSQL
     // θα συμπέραινε διαφορετικό τύπο (VARCHAR vs TEXT) και θα απέρριπτε το query.
-    [workstationId, status, extra.pod_ip || null, extra.access_url || null, ['TERMINATED', 'FAILED'].includes(status)]
+    [workstationId, status, extra.pod_ip || null, extra.access_url || null, TERMINAL_STATUSES.includes(status)]
   );
+}
+
+// Επιστρέφει ένα workstation μαζί με την ώρα λήξης της συνεδρίας (υπολογίζεται από το created_at).
+async function getWorkstation(workstationId) {
+  const result = await pool.query(
+    `SELECT *, (created_at + make_interval(secs => $2)) AT TIME ZONE current_setting('TimeZone') AS expires_at
+       FROM workstation_requests WHERE id = $1`,
+    [workstationId, SESSION_TTL_SECONDS]
+  );
+  return result.rows[0] || null;
 }
 
 // Ολόκληρη η ροή δημιουργίας. Στη Φάση 2 τα Steps 1 και 3 θα γίνουν πραγματικοί έλεγχοι.
@@ -166,11 +190,11 @@ async function provisionWorkstation({ username, profile, clientIp, publicHost })
       image: profile.image_tag,
       nodePort,
       podIP: pod.status.podIP,
+      sessionTtlHours: SESSION_TTL_HOURS,
     });
-    console.log(`[LOG] Workstation ${podName} is Ready at ${access_url}`);
+    console.log(`[LOG] Workstation ${podName} is Ready at ${access_url} (session: ${SESSION_TTL_HOURS}h)`);
 
-    const result = await pool.query('SELECT * FROM workstation_requests WHERE id = $1', [workstationId]);
-    return result.rows[0];
+    return getWorkstation(workstationId);
   } catch (err) {
     const reason = describeK8sError(err);
     console.error(`[ERROR] Provisioning ${podName} failed: ${reason}`);
@@ -197,25 +221,71 @@ async function terminateWorkstation(workstationId) {
   return ws;
 }
 
+async function expireWorkstation(ws, details) {
+  if (ws.pod_name) await deleteK8sResources(ws.pod_name);
+  await setStatus(ws.id, 'EXPIRED');
+  await audit(ws.id, 'SESSION', 'SESSION-TTL', 'EXPIRED', { sessionTtlHours: SESSION_TTL_HOURS, pod: ws.pod_name, ...details });
+  console.log(`[LOG] Session of ${ws.pod_name} expired after ${SESSION_TTL_HOURS}h — Pod & Service deleted`);
+}
+
+// Τερματίζει τα workstations των οποίων η συνεδρία ξεπέρασε το SESSION_TTL_HOURS.
+async function expireSessions() {
+  const expired = await pool.query(
+    `SELECT id, pod_name FROM workstation_requests
+      WHERE status = 'RUNNING' AND created_at < NOW() - make_interval(secs => $1)`,
+    [SESSION_TTL_SECONDS]
+  );
+  for (const ws of expired.rows) {
+    try {
+      await expireWorkstation(ws, { message: 'Session time limit reached' });
+    } catch (err) {
+      console.error(`[ERROR] Expiring ${ws.pod_name} failed:`, describeK8sError(err));
+    }
+  }
+  return expired.rows.length;
+}
+
+let sweepInProgress = false;
+
+// Τρέχει την expireSessions μία φορά στην εκκίνηση και μετά περιοδικά.
+function startSessionSweeper() {
+  const sweep = async () => {
+    if (sweepInProgress) return;
+    sweepInProgress = true;
+    try {
+      await expireSessions();
+    } catch (err) {
+      console.error('[WARN] Session sweep failed:', describeK8sError(err));
+    } finally {
+      sweepInProgress = false;
+    }
+  };
+  sweep();
+  setInterval(sweep, SESSION_SWEEP_INTERVAL_MS);
+  console.log(`[SESSION] Workstation sessions expire after ${SESSION_TTL_HOURS}h (checked every ${SESSION_SWEEP_INTERVAL_MS / 1000}s)`);
+}
+
 // Συγχρονίζει τη βάση με την πραγματική κατάσταση του cluster
 // (π.χ. Pods που σβήστηκαν με kubectl ή χάθηκαν μετά από reboot).
 async function reconcileWithCluster() {
+  // Ο έλεγχος για "κολλημένα" αιτήματα γίνεται στη βάση, ώστε να μην εξαρτάται από τη ζώνη ώρας του Node.
   const active = await pool.query(
-    'SELECT id, pod_name, status, created_at FROM workstation_requests WHERE status = ANY($1)',
-    [ACTIVE_STATUSES]
+    `SELECT id, pod_name, status,
+            created_at < NOW() - make_interval(secs => $2) AS is_stale
+       FROM workstation_requests WHERE status = ANY($1)`,
+    [ACTIVE_STATUSES, Math.round(READY_TIMEOUT_MS / 1000) + 60]
   );
   if (active.rows.length === 0) return;
 
   const podList = await k8sCoreApi.listNamespacedPod({ namespace: k8sNamespace });
   const podsByName = new Map(podList.items.map((p) => [p.metadata.name, p]));
-  const staleBefore = Date.now() - READY_TIMEOUT_MS - 60000;
 
   for (const ws of active.rows) {
     const pod = podsByName.get(ws.pod_name);
 
     // Αιτήματα σε εξέλιξη τα αφήνουμε, εκτός αν κόλλησαν (π.χ. restart του Manager στη μέση).
     if (ws.status !== 'RUNNING') {
-      if (new Date(ws.created_at).getTime() < staleBefore) {
+      if (ws.is_stale) {
         if (pod) await deleteK8sResources(ws.pod_name).catch(() => {});
         await setStatus(ws.id, 'FAILED');
         await audit(ws.id, 'RECONCILE', 'LIFECYCLE', 'FAILED', { error: `Request stuck in ${ws.status}` });
@@ -228,8 +298,14 @@ async function reconcileWithCluster() {
       await audit(ws.id, 'RECONCILE', 'LIFECYCLE', 'TERMINATED', { message: 'Pod no longer exists in cluster' });
       continue;
     }
+    // Το kubelet τερμάτισε το Pod λόγω activeDeadlineSeconds (δίχτυ ασφαλείας της συνεδρίας).
+    if (pod.status && pod.status.phase === 'Failed' && pod.status.reason === 'DeadlineExceeded') {
+      await expireWorkstation(ws, { message: 'Pod stopped by Kubernetes (activeDeadlineSeconds)' });
+      continue;
+    }
     const fatalReason = getFatalWaitingReason(pod);
     if (fatalReason) {
+      await deleteK8sResources(ws.pod_name).catch(() => {});
       await setStatus(ws.id, 'FAILED');
       await audit(ws.id, 'RECONCILE', 'LIFECYCLE', 'FAILED', { error: fatalReason });
     }
@@ -238,8 +314,12 @@ async function reconcileWithCluster() {
 
 module.exports = {
   USERNAME_PATTERN,
+  SESSION_TTL_HOURS,
+  SESSION_TTL_SECONDS,
   provisionWorkstation,
   terminateWorkstation,
   reconcileWithCluster,
+  expireSessions,
+  startSessionSweeper,
   describeK8sError,
 };
