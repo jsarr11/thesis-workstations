@@ -75,7 +75,11 @@
     </div>
 
     <div id="workstations" class="tab-content">
-        <h3 style="color: #38bdf8; margin-top: 0;">Workstation Pods (ενεργά & ιστορικό)</h3>
+        <h3 style="color: #38bdf8; margin-top: 0;">Workstation Pods</h3>
+        <div style="display: flex; gap: 20px; align-items: center; color: #94a3b8;">
+            <label><input type="checkbox" id="showHistory" onchange="renderWorkstations()"> Εμφάνιση ιστορικού (FAILED / TERMINATED) <span id="hiddenCount"></span></label>
+            <button style="background: #334155; color: #f8fafc; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;" onclick="loadAdminData()">↻ Ανανέωση</button>
+        </div>
         <table>
             <thead>
                 <tr>
@@ -183,14 +187,17 @@
             console.log(`Policy ${ruleId} updated to ${isEnabled}`);
         }
 
-        // 3. Φόρτωση Workstations & Audit Logs
-        async function loadAdminData() {
-            loadPolicies();
+        // 3. Workstations: από προεπιλογή μόνο τα ενεργά. Τα FAILED/TERMINATED κρύβονται αλλά
+        //    δεν διαγράφονται, γιατί η διαγραφή θα έσβηνε και τα audit logs τους (ON DELETE CASCADE).
+        let allWorkstations = [];
 
-            // Workstations
-            const resW = await fetch('/api/workstations');
-            const workstations = await resW.json();
-            document.getElementById('workstationsTable').innerHTML = workstations.map(w => `
+        function renderWorkstations() {
+            const showHistory = document.getElementById('showHistory').checked;
+            const visible = showHistory ? allWorkstations : allWorkstations.filter(w => ACTIVE.includes(w.status));
+            const hidden = allWorkstations.length - visible.length;
+            document.getElementById('hiddenCount').innerText = hidden > 0 ? `(${hidden} κρυμμένα)` : '';
+
+            document.getElementById('workstationsTable').innerHTML = visible.map(w => `
                 <tr>
                     <td><b>${esc(w.username)}</b></td>
                     <td>${esc(w.profile_name)}</td>
@@ -200,7 +207,16 @@
                     <td>${w.status === 'RUNNING' && w.access_url ? `<a href="${esc(w.access_url)}" target="_blank" style="color:#38bdf8;">Open IDE</a>` : '-'}</td>
                     <td>${ACTIVE.includes(w.status) ? `<button class="btn-danger" onclick="terminateWorkstation('${esc(w.id)}', this)">Terminate</button>` : '-'}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="7">Δεν υπάρχουν workstations.</td></tr>';
+            `).join('') || `<tr><td colspan="7">${showHistory ? 'Δεν υπάρχουν workstations.' : 'Δεν υπάρχουν ενεργά workstations.'}</td></tr>`;
+        }
+
+        // 4. Φόρτωση Workstations & Audit Logs
+        async function loadAdminData() {
+            loadPolicies();
+
+            const resW = await fetch('/api/workstations');
+            allWorkstations = await resW.json();
+            renderWorkstations();
 
             // Audit Logs
             const resA = await fetch('/api/audit-logs');
