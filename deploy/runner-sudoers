@@ -1,0 +1,9 @@
+# Επιτρέπει στον χρήστη του GitHub Actions runner (root1) να εκτελεί ΧΩΡΙΣ κωδικό μόνο
+# τις εντολές που χρειάζεται το deploy.sh για build/import των workstation images.
+#
+# Εγκατάσταση (με έλεγχο σύνταξης, ώστε ένα λάθος να μην κλειδώσει το sudo):
+#   sudo visudo -c -f deploy/runner-sudoers && sudo install -m 0440 deploy/runner-sudoers /etc/sudoers.d/github-runner
+#
+# Σημείωση: η πρόσβαση στο docker ισοδυναμεί πρακτικά με root στο VM — αποδεκτό για το lab,
+# αλλά σε παραγωγή θα χρησιμοποιούνταν registry αντί για τοπικά builds.
+root1 ALL=(root) NOPASSWD: /usr/bin/docker, /usr/local/bin/k3s
