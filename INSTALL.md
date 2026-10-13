@@ -31,14 +31,16 @@
 
 ```
 Το PC σου (browser) ──► VM στο Proxmox (Ubuntu 22.04)
-                          ├── Manager (Node.js, PM2)      :5000   ← portal + admin + API
-                          ├── PostgreSQL (Docker)         :5432
+                          ├── Manager (Node.js, PM2)      :5000   ← /login → portal (developer) ή /admin (admin) + API
+                          ├── PostgreSQL (Docker)         :5432   ← χρήστες, αιτήματα, audit logs
                           ├── k3s (Kubernetes)
-                          │     └── Workstation Pods (VS Code στον browser)  :30000–32767
+                          │     └── Workstation Pods (VS Code στον browser, με token)  :30000–32767
                           └── GitHub Actions runner       ← κάθε push στο main γίνεται deploy αυτόματα
 ```
 
 Ό,τι τρέχει, τρέχει **μέσα σε ένα VM**. Στο PC σου χρειάζεσαι μόνο browser, τερματικό για SSH και git.
+
+**Πώς το χρησιμοποιούν οι χρήστες:** ο admin δημιουργεί λογαριασμούς. Ο developer κάνει login και ζητά workstation. Ο admin το εγκρίνει από την καρτέλα 🔔 Notifications. Ο developer ανοίγει τον VS Code από το link του, και το workstation σβήνεται αυτόματα μετά από 10 ώρες.
 
 ---
 

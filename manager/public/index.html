@@ -70,7 +70,7 @@
 
         <div class="card">
             <h2>📋 Τα workstations μου</h2>
-            <label style="font-weight: normal;"><input type="checkbox" id="showHistory" style="width: auto;" onchange="renderMine()"> Εμφάνιση ιστορικού</label>
+            <label style="font-weight: normal;"><input type="checkbox" id="showHistory" style="width: auto;" onchange="renderMine()"> Εμφάνιση ιστορικού (εκτός από τα ενεργά, φαίνονται πάντα οι απορρίψεις, αποτυχίες και λήξεις του τελευταίου 24ώρου)</label>
             <table>
                 <thead>
                     <tr><th>Αίτημα</th><th>Profile</th><th>Κατάσταση</th><th>Λήξη συνεδρίας</th><th>Πρόσβαση</th><th>Ενέργειες</th></tr>
@@ -132,12 +132,17 @@
             select.replaceChildren(...profiles.map(p => new Option(`${p.display_name} (${p.name})`, p.id)));
         }
 
+        // Απορρίψεις/αποτυχίες/λήξεις των τελευταίων 24 ωρών φαίνονται πάντα, ώστε ο χρήστης να ενημερώνεται αμέσως.
+        const RECENT_OUTCOMES = ['REJECTED', 'FAILED', 'EXPIRED'];
+        const isRecentOutcome = (w) => RECENT_OUTCOMES.includes(w.status)
+            && w.terminated_at && Date.now() - new Date(w.terminated_at).getTime() < 24 * 3600 * 1000;
+
         function renderMine() {
             const showHistory = document.getElementById('showHistory').checked;
-            const rows = showHistory ? mine : mine.filter(w => OPEN.includes(w.status));
+            const rows = showHistory ? mine : mine.filter(w => OPEN.includes(w.status) || isRecentOutcome(w));
             document.getElementById('mineTable').innerHTML = rows.map(w => {
                 const [label, cls] = STATUS_LABEL[w.status] || [w.status, ''];
-                const note = w.status === 'REJECTED' && w.review_note ? `<br><small>${esc(w.review_note)}</small>` : '';
+                const note = w.status === 'REJECTED' && w.review_note ? `<br><small>Αιτιολογία: ${esc(w.review_note)}</small>` : '';
                 const access = w.access_link ? `<a class="open-link" href="${esc(w.access_link)}" target="_blank" rel="noopener">🔗 Άνοιγμα VS Code</a>` : '-';
                 const action = w.status === 'WAITING_APPROVAL'
                     ? `<button class="btn-small" onclick="terminate('${esc(w.id)}', this, 'Ακύρωση του αιτήματος;')">Ακύρωση</button>`
