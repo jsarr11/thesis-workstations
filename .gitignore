@@ -8,3 +8,6 @@ manager/.env
 # Dependencies
 node_modules/
 manager/node_modules/
+
+# Editor swap files
+*.swp

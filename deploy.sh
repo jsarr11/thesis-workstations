@@ -5,11 +5,9 @@ set -euo pipefail
 
 REPO_DIR="$HOME/thesis-workstations"
 MANAGER_DIR="$REPO_DIR/manager"
-PROFILE_IMAGES=(
-  "workstation-profile:developer"
-  "workstation-profile:data-analyst"
-  "workstation-profile:devops"
-)
+DOCKER_DIR="$REPO_DIR/docker"
+BASE_IMAGE="workstation-base:v1"
+PROFILES=("developer" "data-analyst" "devops")   # image: workstation-profile:<profile>, Dockerfile.<profile>
 
 echo "=== [CD] Starting Deployment on Proxmox VM ==="
 
@@ -36,22 +34,45 @@ else
 fi
 pm2 save
 
-# 5. Import στο k3s μόνο των images που λείπουν (FORCE_IMAGE_IMPORT=1 για εξαναγκασμένο import)
-echo "=== Checking workstation images in k3s ==="
+# 5. Workstation images: build όσων λείπουν από το Docker και import όσων λείπουν από το k3s
+#    (FORCE_IMAGE_IMPORT=1 για εξαναγκασμένο import όλων στο k3s)
+docker_has() { sudo -n docker image inspect "$1" >/dev/null 2>&1; }
+
+echo "=== Checking workstation images (Docker & k3s) ==="
 if sudo -n true 2>/dev/null; then
+  BUILT_ANY=0
+  for profile in "${PROFILES[@]}"; do
+    img="workstation-profile:$profile"
+    if ! docker_has "$img"; then
+      if [ "$(df --output=pcent / | tail -1 | tr -dc '0-9')" -ge 80 ]; then
+        echo "[ERROR] Ο δίσκος είναι πάνω από 80% — ακυρώνεται το build του $img για να μη γεμίσει ο δίσκος"
+        exit 1
+      fi
+      if ! docker_has "$BASE_IMAGE"; then
+        echo "[+] Build του $BASE_IMAGE (λείπει από το Docker)..."
+        sudo -n docker build -f "$DOCKER_DIR/Dockerfile.base" -t "$BASE_IMAGE" "$DOCKER_DIR"
+      fi
+      echo "[+] Build του $img (λείπει από το Docker) — μπορεί να διαρκέσει μερικά λεπτά..."
+      sudo -n docker build -f "$DOCKER_DIR/Dockerfile.$profile" -t "$img" "$DOCKER_DIR"
+      BUILT_ANY=1
+    fi
+  done
+  if [ "$BUILT_ANY" = "1" ]; then
+    sudo -n docker image prune -f >/dev/null   # σβήνει μόνο dangling layers, όχι images με tag
+  fi
+
   K3S_IMAGES="$(sudo -n k3s ctr -n k8s.io images ls -q)"
-  for img in "${PROFILE_IMAGES[@]}"; do
+  for profile in "${PROFILES[@]}"; do
+    img="workstation-profile:$profile"
     if [ "${FORCE_IMAGE_IMPORT:-0}" != "1" ] && grep -qx "docker.io/library/$img" <<< "$K3S_IMAGES"; then
       echo "[=] $img υπάρχει ήδη στο k3s"
-    elif sudo -n docker image inspect "$img" >/dev/null 2>&1; then
+    else
       echo "[+] Import του $img στο k3s containerd (namespace k8s.io)..."
       sudo -n docker save "$img" | sudo -n k3s ctr -n k8s.io images import -
-    else
-      echo "[!] ΠΡΟΣΟΧΗ: Το $img λείπει από το k3s ΚΑΙ από το Docker — χρειάζεται docker build"
     fi
   done
 else
-  echo "[!] Δεν υπάρχει passwordless sudo για τον runner — παραλείπεται ο έλεγχος images"
+  echo "[!] Δεν υπάρχει passwordless sudo για τον runner — παραλείπεται ο έλεγχος images (τρέξε το deploy.sh χειροκίνητα)"
 fi
 
 # 6. Health check: το deployment θεωρείται επιτυχές μόνο αν ο Manager απαντά
