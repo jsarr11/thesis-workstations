@@ -2,27 +2,33 @@
 
 ## 🏗️ Infrastructure & Lab Access Blueprint
 
+> Credentials are intentionally **not** stored in this (public) repository. They are kept in the private `info/` notes.
+
 ### Proxmox Host Access
 - **Web UI URL:** `https://192.168.1.100:8006`
-- **Root User:** `root`
-- **Root Password:** `rootroot`
-- **Proxmox Node Shell Command:** `reboot` (for hardware/filesystem recovery)
 
 ### Ubuntu Server VM (k3s Node / Workstation Host)
 - **VM ID:** `100`
 - **Hostname:** `k3s-master`
-- **Username:** `root1`
-- **Password:** `rootroot1`
+- **SSH:** `ssh root1@192.168.1.248`
 - **Network Interface (DHCP IP):** `192.168.1.248/24`
-- **Services Enabled:** OpenSSH Server (`sshd`), GitHub Actions Self-Hosted Runner
+- **Disk:** 30 GB root LV (`ubuntu-vg/ubuntu-lv`) — keep usage below 80%, otherwise k3s garbage-collects the workstation images
+- **Services Enabled:** OpenSSH Server (`sshd`), GitHub Actions Self-Hosted Runner, PM2 (`pm2-root1` systemd unit)
+
+### Application URLs
+- **Developer Portal:** `http://192.168.1.248:5000`
+- **Admin Dashboard:** `http://192.168.1.248:5000/admin`
+- **Health Check:** `http://192.168.1.248:5000/api/health`
+- **Workstations:** `http://192.168.1.248:<NodePort>/?folder=/home/workspace` (returned by the portal)
 
 ### Database Infrastructure (PostgreSQL Container)
 - **Container Name:** `thesis-postgres`
 - **Database Name:** `thesis_workstations_db`
-- **User:** `thesis_admin`
-- **Password:** `thesis_password123`
 - **Port:** `5432`
 - **Storage Volume:** `pgdata`
+
+### Manager Configuration
+- Copy `manager/.env.example` to `manager/.env` on the VM and fill in the values (the `.env` file is not tracked by git).
 
 ### Core Technologies
 - **Hypervisor:** Proxmox VE
@@ -59,6 +65,7 @@
   - [x] Upgrade environment to Node.js v20 LTS & Initialize Express API Server with DB connection
   - [x] Implement Kubernetes API Client setup (`k8s.js`) for real k3s provisioning & dynamic Namespace binding
   - [x] Transition from Mock to Real Provisioning (`server.js` integration with `k8sCoreApi` for Pod & NodePort Service deployment)
+  - [x] Workstation lifecycle (`workstations.js`): input validation, Pod readiness wait, failure cleanup, terminate endpoint, DB ↔ cluster reconciliation
   - [ ] Build Auto-Remediation Engine (YAML AST Parsing & Mutating)
 - [x] **Step 4:** Frontend UI (Admin Checklist & Developer Dashboard)
   - [x] Develop Developer Portal (`index.html`) for Workstation Request form

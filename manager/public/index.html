@@ -13,6 +13,10 @@
         button:hover { background: #0369a1; }
         .result { margin-top: 20px; padding: 15px; border-radius: 6px; background: #064e3b; border: 1px solid #059669; display: none; }
         .result a { color: #34d399; font-weight: bold; }
+        .error { margin-top: 20px; padding: 15px; border-radius: 6px; background: #450a0a; border: 1px solid #dc2626; color: #fecaca; display: none; }
+        .progress { margin-top: 20px; color: #94a3b8; display: none; }
+        button:disabled { background: #475569; cursor: wait; }
+        .hint { font-size: 12px; color: #64748b; margin-top: 4px; }
     </style>
 </head>
 <body>
@@ -20,15 +24,20 @@
         <h2>💻 Request Cloud Workstation</h2>
         <form id="requestForm">
             <label for="username">Username / ID:</label>
-            <input type="text" id="username" placeholder="π.χ. root1" required>
+            <input type="text" id="username" placeholder="π.χ. test1" required maxlength="30"
+                   pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" title="Μόνο πεζά λατινικά, αριθμοί και παύλα (-)">
+            <div class="hint">Μόνο πεζά λατινικά, αριθμοί και παύλα (-), έως 30 χαρακτήρες.</div>
 
             <label for="profileSelect">Workstation Profile:</label>
             <select id="profileSelect" required>
                 <option value="">Φόρτωση Προφίλ...</option>
             </select>
 
-            <button type="submit">🚀 Launch Workstation Pod</button>
+            <button type="submit" id="launchBtn">🚀 Launch Workstation Pod</button>
         </form>
+
+        <div id="progressBox" class="progress">⏳ Δημιουργία του Pod στο k3s και αναμονή μέχρι να γίνει Ready...</div>
+        <div id="errorBox" class="error"></div>
 
         <div id="resultBox" class="result">
             <strong>✅ Το Workstation είναι έτοιμο!</strong><br>
@@ -43,26 +52,42 @@
             const res = await fetch('/api/profiles');
             const profiles = await res.json();
             const select = document.getElementById('profileSelect');
-            select.innerHTML = profiles.map(p => `<option value="${p.id}">${p.display_name} (${p.name})</option>`).join('');
+            select.replaceChildren(...profiles.map(p => new Option(`${p.display_name} (${p.name})`, p.id)));
         }
 
         // Υποβολή αιτήματος
         document.getElementById('requestForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const username = document.getElementById('username').value;
+            const username = document.getElementById('username').value.trim().toLowerCase();
             const profile_id = document.getElementById('profileSelect').value;
+            const launchBtn = document.getElementById('launchBtn');
+            const progressBox = document.getElementById('progressBox');
+            const errorBox = document.getElementById('errorBox');
+            const resultBox = document.getElementById('resultBox');
 
-            const res = await fetch('/api/workstations/request', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, profile_id })
-            });
+            launchBtn.disabled = true;
+            progressBox.style.display = 'block';
+            errorBox.style.display = 'none';
+            resultBox.style.display = 'none';
 
-            const data = await res.json();
-            if (data.success) {
+            try {
+                const res = await fetch('/api/workstations/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, profile_id })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+
                 document.getElementById('podInfo').innerText = `Pod Name: ${data.data.pod_name} | Status: ${data.data.status}`;
                 document.getElementById('accessLink').href = data.data.access_url;
-                document.getElementById('resultBox').style.display = 'block';
+                resultBox.style.display = 'block';
+            } catch (err) {
+                errorBox.innerText = `❌ ${err.message}`;
+                errorBox.style.display = 'block';
+            } finally {
+                launchBtn.disabled = false;
+                progressBox.style.display = 'none';
             }
         });
 
