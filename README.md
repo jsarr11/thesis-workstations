@@ -87,6 +87,7 @@ All profiles inherit from `workstation-base:v1` (OpenVSCode Server, non-root `US
 ```
 .
 ├── .github/workflows/deploy.yml   # CD: runs deploy.sh on the self-hosted runner on every push to main
+├── INSTALL.md                     # step-by-step installation guide (Greek)
 ├── deploy.sh                      # pull → npm ci → pm2 restart → build/import missing images → health check
 ├── deploy/runner-sudoers          # least-privilege sudo rule for the CI runner (docker + k3s only)
 ├── database/
@@ -114,7 +115,9 @@ All profiles inherit from `workstation-base:v1` (OpenVSCode Server, non-root `US
 
 ## Getting started
 
-**Prerequisites:** a Linux host with [k3s](https://k3s.io), Docker (with Compose), Node.js ≥ 20.19 and PM2.
+> 📘 **Full step-by-step installation guide (Greek):** [INSTALL.md](INSTALL.md) — from creating the Proxmox VM to GitHub Actions, backups and troubleshooting.
+
+Quick start for an existing host. **Prerequisites:** a Linux host with [k3s](https://k3s.io), Docker (with Compose), Node.js ≥ 20.19 and PM2.
 
 ```bash
 # 1. Database
