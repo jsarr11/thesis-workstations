@@ -121,9 +121,11 @@ async function setStatus(workstationId, status, extra = {}) {
         SET status = $2,
             pod_ip = COALESCE($3, pod_ip),
             access_url = COALESCE($4, access_url),
-            terminated_at = CASE WHEN $2 IN ('TERMINATED', 'FAILED') THEN NOW() ELSE terminated_at END
+            terminated_at = CASE WHEN $5 THEN NOW() ELSE terminated_at END
       WHERE id = $1`,
-    [workstationId, status, extra.pod_ip || null, extra.access_url || null]
+    // Το $5 είναι ξεχωριστή boolean παράμετρος: αν ξαναχρησιμοποιούσαμε το $2, η PostgreSQL
+    // θα συμπέραινε διαφορετικό τύπο (VARCHAR vs TEXT) και θα απέρριπτε το query.
+    [workstationId, status, extra.pod_ip || null, extra.access_url || null, ['TERMINATED', 'FAILED'].includes(status)]
   );
 }
 
