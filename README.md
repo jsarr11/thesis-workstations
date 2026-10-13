@@ -35,30 +35,41 @@ Cloud development environments (Gitpod, GitHub Codespaces, self-hosted VS Code) 
 
 ```mermaid
 flowchart LR
-    U["Browser<br/>(Developer / Admin)"] -->|HTTP| M
+    DEV["Developer<br/>(browser)"] -->|"login · request"| M
+    ADM["Admin<br/>(browser)"] -->|"login · approve / reject<br/>users · audit"| M
 
     subgraph VM["Proxmox VM · Ubuntu 22.04 · k3s"]
-        M["Manager — Glue Layer<br/>Node.js / Express<br/>serves UI + REST API"]
-        DB[("PostgreSQL<br/>profiles · policy_rules<br/>workstation_requests · audit_logs")]
+        M["Manager — Glue Layer<br/>Node.js / Express<br/>auth + RBAC · REST API · UI"]
+        DB[("PostgreSQL<br/>users · user_sessions · profiles · policy_rules<br/>workstation_requests · audit_logs")]
         subgraph K3S["k3s cluster"]
             API["kube-apiserver"]
+            S["Secret<br/>connection token"]
             W1["Workstation Pod<br/>OpenVSCode Server"]
-            W2["Workstation Pod<br/>OpenVSCode Server"]
         end
         M --> DB
         M -->|"@kubernetes/client-node"| API
-        API --> W1 & W2
+        API --> S & W1
+        S -.->|"mounted file"| W1
     end
 
-    U -.->|"NodePort :3xxxx"| W1
+    DEV -.->|"NodePort :3xxxx ?tkn=…<br/>(owner only)"| W1
     GH["GitHub Actions"] -->|"self-hosted runner<br/>deploy.sh"| VM
 ```
 
-### Provisioning pipeline (inside the Manager)
+### Request flow
 
 ```
-Request ─► 1. Image Validation ─► 2. Manifest Generation ─► 3. Admission Gate ─► 4. Deploy ─► 5. Readiness ─► Audit log
-              (Trivy — planned)      (remediation — planned)   (Kyverno/OPA — planned)  (k3s)       (Pod Ready)     (PostgreSQL)
+Login ─► Request ─► WAITING_APPROVAL ─► Admin: Accept ─► Provisioning pipeline ─► RUNNING (tokenized link, 10h session)
+          (developer)   (🔔 Notifications)   └─► Admin: Reject ─► REJECTED (reason shown to the developer)
+          admin requests are auto-approved
+```
+
+### Provisioning pipeline (inside the Manager, after approval)
+
+```
+1. Image Validation ─► 2. Manifest Generation ─► 3. Admission Gate ─► 4. Deploy ─► 5. Readiness ─► Audit log
+   (Trivy — planned)      (+ connection token;      (Kyverno/OPA —        (Secret, Pod,  (Pod Ready)     (PostgreSQL,
+                           remediation — planned)    planned)              Service)                       with actor)
 ```
 
 Each stage logs its progress (`[LOG] Step N: …`) and writes to the audit trail. Stages 1–3 are wired in as placeholders today and become real checks in Phase 2.
