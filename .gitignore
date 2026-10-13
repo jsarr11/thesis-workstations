@@ -1,0 +1,10 @@
+# Private info & context folder
+info/
+
+# Environment files & Secrets
+.env
+manager/.env
+
+# Dependencies
+node_modules/
+manager/node_modules/
