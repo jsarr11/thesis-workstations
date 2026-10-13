@@ -341,6 +341,16 @@ sudo k3s ctr -n k8s.io images ls -q | grep workstation     # 3 images
 df -h /                                                    # κάτω από 80%
 ```
 
+### 9.3 Πρώτος λογαριασμός admin
+Η πρόσβαση στο σύστημα γίνεται μόνο με λογαριασμό. Τον **πρώτο admin** τον δημιουργείς από τη γραμμή εντολών. Όλους τους υπόλοιπους χρήστες τους δημιουργεί μετά ο admin από το UI.
+```bash
+cd ~/thesis-workstations/manager
+node scripts/create-admin.js --email <το-email-σου> --name "<Ονοματεπώνυμο>" --username <username>
+```
+Το `username` γράφεται με πεζά λατινικά, αριθμούς και `-`, π.χ. `admin`. Το script τυπώνει έναν **προσωρινό κωδικό** μία φορά. Με αυτόν συνδέεσαι στο `http://<ip-του-vm>:5000/login` και αμέσως σου ζητείται να ορίσεις δικό σου κωδικό, τουλάχιστον 10 χαρακτήρων με γράμματα και αριθμούς.
+
+> Αν ξεχάσεις τον κωδικό του admin: `node scripts/create-admin.js --email <το-email-σου> --reset`. Βγάζει νέο προσωρινό κωδικό.
+
 ---
 
 ## 10. GitHub Actions: self-hosted runner (CI/CD)
@@ -401,14 +411,16 @@ gunzip -c /var/backups/thesis-db/thesis-db_<ημερομηνία>.sql.gz | sudo 
 
 Από τον browser **του PC σου**:
 
-1. **Portal:** `http://<ip-του-vm>:5000`
-   - Username: `test1` (μόνο πεζά λατινικά, αριθμοί και `-`), Profile: **Software Developer** → **Launch**
-   - Μετά από περίπου 10–60 δευτερόλεπτα θα εμφανιστεί το link και η ώρα λήξης της συνεδρίας.
-2. Πάτα το link. Πρέπει να ανοίξει το **VS Code** στον browser.
-3. **Admin:** `http://<ip-του-vm>:5000/admin`
-   - Workstations: το `test1` είναι **RUNNING** → πάτα **Terminate**.
-   - Audit Trail: πάτα **Export JSON**. Πρέπει να κατέβει ένα αρχείο.
-4. Επανάλαβε με **Data Analyst** και **DevOps**.
+1. **Login ως admin:** `http://<ip-του-vm>:5000/login`, με τον λογαριασμό του [§9.3](#93-πρώτος-λογαριασμός-admin).
+2. **Δημιουργία developer:** `/admin` → καρτέλα **👥 Users** → συμπλήρωσε email, ονοματεπώνυμο, username και ρόλο `developer` → **Δημιουργία χρήστη**. Σημείωσε τον **προσωρινό κωδικό**, γιατί εμφανίζεται μόνο μία φορά.
+3. **Αίτημα ως developer:** σε άλλο browser ή σε παράθυρο ανώνυμης περιήγησης, κάνε login με τον developer και όρισε νέο κωδικό. Στο portal διάλεξε **Software Developer** → **Αίτημα Workstation**. Στη λίστα «Τα workstations μου» πρέπει να εμφανιστεί **⏳ Αναμονή έγκρισης**.
+4. **Έγκριση ως admin:** η καρτέλα **🔔 Notifications** γίνεται **κόκκινη** μέσα σε περίπου 10 δευτερόλεπτα. Πάτα **✔ Accept**.
+5. **Στον developer:** η κατάσταση γίνεται 🚀 και μετά ✅ **Έτοιμο**. Πάτα **🔗 Άνοιγμα VS Code**. Πρέπει να ανοίξει το **VS Code** στον browser.
+6. **Έλεγχος του token:** σε **νέο παράθυρο ανώνυμης περιήγησης**, άνοιξε το ίδιο URL **χωρίς** το κομμάτι `&tkn=...`. Ο VS Code **δεν** πρέπει να ανοίξει. Σε κανονικό παράθυρο θα άνοιγε, επειδή ο VS Code κρατά το token σε cookie μετά την πρώτη επίσκεψη.
+7. **Έλεγχος ρόλων:** ως developer, άνοιξε το `/admin`. Πρέπει να σε γυρίσει στο portal.
+8. **Reject:** κάνε ένα δεύτερο αίτημα και πάτα **✖ Reject** με αιτιολογία. Ο developer πρέπει να δει **❌ Απορρίφθηκε** μαζί με την αιτιολογία.
+9. **Τερματισμός και audit:** πάτα **Τερματισμός** στο workstation. Στο `/admin` → **📜 Audit Trail** → **Export JSON** πρέπει να κατέβει αρχείο με όλα τα παραπάνω: login, αίτημα, έγκριση, απόρριψη, τερματισμός, μαζί με το ποιος έκανε την κάθε ενέργεια.
+10. Επανάλαβε τα βήματα 3–5 με **Data Analyst** και **DevOps**.
 
 Στο VM μπορείς να παρακολουθείς:
 ```bash
@@ -429,7 +441,10 @@ pm2 logs manager                # τα logs του Manager ([LOG] Step 1..5); Ct
 | δω τα logs του Manager | `pm2 logs manager` |
 | κάνω restart τον Manager | `pm2 restart manager` |
 | δω τα workstations | `kubectl get pods,svc` |
-| σβήσω ένα workstation | `/admin` → **Terminate** |
+| σβήσω ένα workstation | `/admin` → **Terminate** (ή ο ίδιος ο χρήστης από το portal) |
+| εγκρίνω/απορρίψω αιτήματα | `/admin` → **🔔 Notifications** (κόκκινη καρτέλα όταν υπάρχουν αιτήματα) |
+| προσθέσω χρήστη / reset κωδικού | `/admin` → **👥 Users** |
+| ξεκλειδώσω τον admin (ξεχασμένος κωδικός) | `cd ~/thesis-workstations/manager && node scripts/create-admin.js --email <email> --reset` |
 | αλλάξω τη διάρκεια των sessions | `SESSION_TTL_HOURS` στο `manager/.env` → `pm2 restart manager` |
 | ξαναχτίσω ένα image | `sudo docker rmi workstation-profile:<profile>` → `bash deploy.sh` (το ξαναχτίζει μόνο του) |
 | βγάλω vulnerability report | `bash docker/scan-images.sh` → `reports/<ημερομηνία>/` |
@@ -453,12 +468,17 @@ pm2 logs manager                # τα logs του Manager ([LOG] Step 1..5); Ct
 | Ο Manager δεν ξεκινά: `ERR_REQUIRE_ESM` | παλιό Node.js | `node -v` πρέπει ≥ 20.19, δες το [§5.4](#54-nodejs-20-lts-από-το-nodesource) |
 | Ο Manager δεν ξεκινά: `password authentication failed` | διαφορετικός κωδικός σε `manager/.env` και `database/.env` | βάλε τον ίδιο κωδικό και τρέξε `pm2 restart manager` |
 | Μετά από reboot ο Manager δεν τρέχει | δεν έγινε το `pm2 startup` | [§9.1](#91-αυτόματη-εκκίνηση-του-manager-μετά-από-reboot) |
+| Το portal ζητά login αλλά δεν υπάρχει λογαριασμός | δεν δημιουργήθηκε ο πρώτος admin | [§9.3](#93-πρώτος-λογαριασμός-admin) |
+| «Πολλές αποτυχημένες προσπάθειες» στο login | 5 λάθος κωδικοί σε 15 λεπτά (προστασία από brute-force) | περίμενε 15 λεπτά ή `pm2 restart manager` |
+| Ο Manager δεν ξεκινά: `Database migrations failed` | σφάλμα στο σχήμα της βάσης | `pm2 logs manager` για τη λεπτομέρεια. Τα migrations βρίσκονται στο `database/migrations/` |
+| Το VS Code δεν ανοίγει με το link | το link άνοιξε χωρίς το `tkn=` ή το workstation έληξε | άνοιξέ το ξανά από το portal («Τα workstations μου») |
 
 ---
 
 ## 15. Ασφάλεια
 
-- **Μόνο σε LAN.** Μην κάνεις port forwarding από το router προς τις θύρες 5000, 5432 ή 30000–32767. Σε αυτή τη φάση του project τα workstations είναι **σκόπιμα χωρίς hardening** και ο VS Code **δεν ζητά κωδικό**: όποιος βρει το port αποκτά terminal μέσα στο Pod. Το hardening είναι αντικείμενο της επόμενης φάσης.
+- **Μόνο σε LAN.** Μην κάνεις port forwarding από το router προς τις θύρες 5000, 5432 ή 30000–32767. Το portal και το `/admin` προστατεύονται με login και ρόλους. Κάθε VS Code ανοίγει μόνο με το μυστικό token του. Όμως τα workstations είναι ακόμα **σκόπιμα χωρίς hardening** του Pod (securityContext, NetworkPolicies), και η σύνδεση είναι HTTP χωρίς κρυπτογράφηση. Και τα δύο είναι αντικείμενο της επόμενης φάσης.
+- Σε HTTPS (π.χ. στο cloud πίσω από TLS) βάλε `COOKIE_SECURE=true` στο `manager/.env`.
 - Χρησιμοποίησε **δικούς σου, ισχυρούς κωδικούς** (VM, βάση) και **μην κάνεις commit** αρχεία `.env`.
 - Ο κανόνας sudo του [§8](#8-vm-δικαιώματα-για-το-deploy-sudoers) δίνει πρόσβαση στο `docker`, που πρακτικά ισοδυναμεί με root στο VM. Είναι αποδεκτό για εργαστήριο, όχι για παραγωγή.
 - Αν θες απομακρυσμένη πρόσβαση στο VM, χρησιμοποίησε VPN (π.χ. Tailscale ή WireGuard) και όχι δημόσιες θύρες.

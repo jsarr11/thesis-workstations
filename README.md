@@ -18,6 +18,9 @@ Cloud development environments (Gitpod, GitHub Codespaces, self-hosted VS Code) 
 ## What it does today
 
 - **Self-service portal** — a developer picks a profile (Software Developer, Data Analyst, DevOps / Cloud Security) and gets a running [OpenVSCode Server](https://github.com/gitpod-io/openvscode-server) in the browser.
+- **Authentication & role-based access** — accounts are created by an admin; passwords are hashed with scrypt, sessions use `HttpOnly` / `SameSite=Strict` cookies (only a SHA-256 of the token is stored), first login forces a password change and repeated failed logins are throttled. Every API call is authorised server-side: developers see only their own workstations, admins get the dashboard.
+- **Approval workflow** — developer requests wait in a *Notifications* tab (highlighted in red with a live counter) until an admin accepts or rejects them with a reason; admin requests are auto-approved. Each decision is recorded with the reviewer.
+- **Per-workstation access token** — each VS Code instance starts with a random connection token delivered through a Kubernetes Secret, so the NodePort URL is useless without the owner's link.
 - **Real provisioning on Kubernetes (k3s)** — the Manager creates a Pod and a NodePort Service, waits until the Pod is actually *Ready*, and only then returns the access URL.
 - **Failure handling** — image or startup failures (e.g. `ErrImageNeverPull`) are detected, the Pod/Service are cleaned up and the request is marked `FAILED` with the reason.
 - **Lifecycle & reconciliation** — workstations can be terminated from the admin dashboard; the database is reconciled with the real cluster state so the UI never shows Pods that no longer exist.
@@ -92,6 +95,7 @@ All profiles inherit from `workstation-base:v1` (OpenVSCode Server, non-root `US
 ├── deploy/runner-sudoers          # least-privilege sudo rule for the CI runner (docker + k3s only)
 ├── database/
 │   ├── docker-compose.yml         # PostgreSQL 15 (credentials from database/.env)
+│   ├── migrations/                # versioned schema changes, applied by the Manager on startup
 │   ├── .env.example
 │   ├── init.sql                   # schema + the three workstation profiles
 │   ├── backup.sh                  # pg_dump + previous day's audit export, 14-day retention
@@ -103,14 +107,18 @@ All profiles inherit from `workstation-base:v1` (OpenVSCode Server, non-root `US
 │   ├── Dockerfile.devops
 │   └── scan-images.sh             # Trivy vulnerability reports (optional 0 Critical / 0 High gate)
 └── manager/                       # Glue layer (Node.js)
-    ├── server.js                  # REST API + static UI
+    ├── server.js                  # REST API, access control per endpoint, pages
+    ├── auth.js                    # password hashing, sessions, role checks, login throttling
+    ├── migrate.js                 # applies database/migrations/*.sql
+    ├── scripts/create-admin.js    # bootstrap the first admin account
     ├── workstations.js            # provisioning pipeline, readiness, cleanup, termination, reconciliation
     ├── k8s.js                     # Kubernetes client (kubeconfig)
     ├── db.js                      # PostgreSQL pool
     ├── .env.example
     └── public/
-        ├── index.html             # Developer portal
-        └── admin.html             # Admin dashboard (policies, workstations, audit trail)
+        ├── login.html             # Login + forced password change
+        ├── index.html             # Developer portal (requests, my workstations)
+        └── admin.html             # Admin dashboard (notifications, workstations, users, policies, audit trail)
 ```
 
 ## Getting started
@@ -140,24 +148,36 @@ cd ../manager
 cp .env.example .env              # DB credentials, K8S_NAMESPACE, optional PUBLIC_HOST
 npm ci --omit=dev
 pm2 start server.js --name manager
+node scripts/create-admin.js --email you@example.com --name "Your Name" --username admin   # prints a temporary password
 ```
 
-Then open `http://<host>:5000` (developer portal) or `http://<host>:5000/admin` (admin dashboard).
+Then log in at `http://<host>:5000/login` (you will be asked to set your own password); admins land on `/admin`, developers on the portal.
 After the first setup, `deploy.sh` keeps everything up to date — including rebuilding any image that has gone missing.
 
 ## REST API
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/health` | Liveness check |
-| `GET` | `/api/profiles` | Available workstation profiles |
-| `GET` | `/api/policies` | Policy rules per profile |
-| `POST` | `/api/policies/toggle` | Enable / disable a rule `{ rule_id, is_enabled }` |
-| `POST` | `/api/workstations/request` | Provision a workstation `{ username, profile_id }` |
-| `GET` | `/api/workstations` | Workstations (reconciled with the cluster) |
-| `DELETE` | `/api/workstations/:id` | Terminate a workstation (Pod + Service) |
-| `GET` | `/api/audit-logs` | Compliance audit trail |
-| `GET` | `/api/audit-logs/export?date=YYYY-MM-DD&format=json\|csv` | Download one day of audit records (day computed in `REPORT_TIMEZONE`) |
+All endpoints except `/api/health` and `/api/auth/login` require a session cookie; authorisation is enforced server-side.
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/health` | public | Liveness check |
+| `POST` | `/api/auth/login` | public | Log in `{ email, password }` (throttled after 5 failures) |
+| `POST` | `/api/auth/logout` | user | End the session |
+| `GET` | `/api/auth/me` | user | Current user |
+| `POST` | `/api/auth/change-password` | user | `{ current_password, new_password }` |
+| `GET` | `/api/profiles` | user | Available workstation profiles |
+| `POST` | `/api/workstations/request` | user | Request a workstation `{ profile_id }` (admin: auto-approved) |
+| `GET` | `/api/my/workstations` | user | The caller's workstations (with tokenized link when running) |
+| `DELETE` | `/api/workstations/:id` | owner / admin | Terminate a workstation (Pod + Service + Secret) or cancel a waiting request |
+| `GET` | `/api/approvals`, `/api/approvals/count` | admin | Requests waiting for approval |
+| `POST` | `/api/workstations/:id/approve` | admin | Approve and start provisioning |
+| `POST` | `/api/workstations/:id/reject` | admin | Reject `{ note }` |
+| `GET` | `/api/workstations` | admin | All workstations (reconciled with the cluster) |
+| `GET` `POST` `PATCH` | `/api/users`, `/api/users/:id` | admin | List / create (temporary password) / change role or activate |
+| `POST` | `/api/users/:id/reset-password` | admin | Issue a new temporary password |
+| `GET` | `/api/policies` · `POST` `/api/policies/toggle` | admin | Policy checklist |
+| `GET` | `/api/audit-logs` | admin | Compliance audit trail (with actor) |
+| `GET` | `/api/audit-logs/export?date=YYYY-MM-DD&format=json|csv` | admin | Download one day of audit records (day computed in `REPORT_TIMEZONE`) |
 
 ## Operations
 
@@ -187,6 +207,8 @@ Configuration (`manager/.env`): `SESSION_TTL_HOURS` (default `10`), `REPORT_TIME
 - [x] **Manager & database** — Express API, PostgreSQL schema, Kubernetes client
 - [x] **Real provisioning** — Pod + NodePort Service, readiness wait, failure cleanup, termination, reconciliation
 - [x] **Sessions** — 10-hour workstation lifetime enforced by the Manager and by Kubernetes
+- [x] **Access control** — login, admin/developer roles, approval workflow with notifications, user management, per-workstation VS Code tokens
+- [x] **Schema migrations** — versioned SQL migrations applied automatically on startup
 - [x] **UI** — developer portal and admin dashboard with daily audit export
 - [x] **CI/CD** — self-hosted runner, fail-fast deploy script, automatic image rebuild/import, health check
 - [x] **Operations** — nightly database backups and audit archives, least-privilege runner permissions
@@ -210,7 +232,9 @@ Configuration (`manager/.env`): `SESSION_TTL_HOURS` (default `10`), `REPORT_TIME
 ## Security notes
 
 - No credentials are stored in this repository; configuration lives in untracked `.env` files (see the `.env.example` templates).
-- The baseline workstations run only on a private lab network and are not exposed to the internet; they are deliberately un-hardened until the Phase 2 remediation engine is in place.
+- Access control: scrypt password hashes, hashed session tokens in `HttpOnly` / `SameSite=Strict` cookies, forced password change on first login, login throttling, server-side role checks on every endpoint, pages not served as static files, no CORS.
+- Every workstation requires its own connection token (Kubernetes Secret); links are only shown to the owner and to admins.
+- Known gaps addressed in Phase 2: Pods are not yet hardened (securityContext, NetworkPolicies), traffic is plain HTTP inside the lab network, and the upstream OpenVSCode image grants the container user password-less `sudo`. Set `COOKIE_SECURE=true` when serving over HTTPS.
 
 ---
 

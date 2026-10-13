@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Σύνδεση — Cloud Workstations</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 40px; display: flex; justify-content: center; }
+        .card { background: #1e293b; border: 1px solid #334155; padding: 30px; border-radius: 12px; width: 100%; max-width: 420px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        h2 { color: #38bdf8; margin-top: 0; border-bottom: 2px solid #334155; padding-bottom: 10px; }
+        label { display: block; margin-top: 15px; font-weight: bold; color: #94a3b8; }
+        input { width: 100%; padding: 12px; margin-top: 5px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; box-sizing: border-box; }
+        button { width: 100%; margin-top: 20px; padding: 12px; background: #0284c7; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #0369a1; }
+        button:disabled { background: #475569; cursor: wait; }
+        .error { margin-top: 15px; padding: 12px; border-radius: 6px; background: #450a0a; border: 1px solid #dc2626; color: #fecaca; display: none; }
+        .info { margin-top: 10px; color: #94a3b8; font-size: 14px; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <form id="loginForm">
+            <h2>🔐 Σύνδεση</h2>
+            <label for="email">Email</label>
+            <input type="email" id="email" autocomplete="username" required autofocus>
+            <label for="password">Κωδικός</label>
+            <input type="password" id="password" autocomplete="current-password" required>
+            <button type="submit" id="loginBtn">Σύνδεση</button>
+        </form>
+
+        <form id="changeForm" class="hidden">
+            <h2>🔑 Νέος κωδικός</h2>
+            <p class="info">Πριν συνεχίσεις, όρισε δικό σου κωδικό (τουλάχιστον 10 χαρακτήρες, με γράμματα και αριθμούς).</p>
+            <label for="newPassword">Νέος κωδικός</label>
+            <input type="password" id="newPassword" autocomplete="new-password" required minlength="10">
+            <label for="confirmPassword">Επιβεβαίωση νέου κωδικού</label>
+            <input type="password" id="confirmPassword" autocomplete="new-password" required minlength="10">
+            <button type="submit" id="changeBtn">Αποθήκευση κωδικού</button>
+        </form>
+
+        <div id="errorBox" class="error"></div>
+    </div>
+
+    <script>
+        const errorBox = document.getElementById('errorBox');
+        let currentPassword = '';
+
+        function showError(message) {
+            errorBox.innerText = `❌ ${message}`;
+            errorBox.style.display = 'block';
+        }
+
+        function goHome(role) {
+            window.location.href = role === 'admin' ? '/admin' : '/';
+        }
+
+        async function postJson(url, body) {
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            return data;
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorBox.style.display = 'none';
+            const btn = document.getElementById('loginBtn');
+            btn.disabled = true;
+            try {
+                currentPassword = document.getElementById('password').value;
+                const data = await postJson('/api/auth/login', {
+                    email: document.getElementById('email').value,
+                    password: currentPassword,
+                });
+                if (data.must_change_password) {
+                    document.getElementById('loginForm').classList.add('hidden');
+                    document.getElementById('changeForm').classList.remove('hidden');
+                    document.getElementById('newPassword').focus();
+                } else {
+                    goHome(data.role);
+                }
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        document.getElementById('changeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorBox.style.display = 'none';
+            const newPassword = document.getElementById('newPassword').value;
+            if (newPassword !== document.getElementById('confirmPassword').value) {
+                return showError('Οι δύο κωδικοί δεν ταιριάζουν');
+            }
+            const btn = document.getElementById('changeBtn');
+            btn.disabled = true;
+            try {
+                const data = await postJson('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword });
+                goHome(data.role);
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

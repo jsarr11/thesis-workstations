@@ -2,98 +2,231 @@
 <html lang="el">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Developer Workstation Portal</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 40px; display: flex; justify-content: center; }
-        .card { background: #1e293b; border: 1px solid #334155; padding: 30px; border-radius: 12px; width: 100%; max-width: 500px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 30px; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; max-width: 1000px; margin: 0 auto 20px; color: #94a3b8; flex-wrap: wrap; gap: 10px; }
+        .topbar a, .link-btn { color: #38bdf8; text-decoration: none; font-weight: bold; background: none; border: none; cursor: pointer; font-size: 15px; padding: 0; margin-left: 15px; }
+        .container { max-width: 1000px; margin: 0 auto; display: grid; gap: 20px; }
+        .card { background: #1e293b; border: 1px solid #334155; padding: 25px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
         h2 { color: #38bdf8; margin-top: 0; border-bottom: 2px solid #334155; padding-bottom: 10px; }
-        label { display: block; margin-top: 15px; font-weight: bold; color: #94a3b8; }
+        label { display: block; margin-top: 12px; font-weight: bold; color: #94a3b8; }
         input, select { width: 100%; padding: 12px; margin-top: 5px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; box-sizing: border-box; }
-        button { width: 100%; margin-top: 20px; padding: 12px; background: #0284c7; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.2s; }
-        button:hover { background: #0369a1; }
-        .result { margin-top: 20px; padding: 15px; border-radius: 6px; background: #064e3b; border: 1px solid #059669; display: none; }
-        .result a { color: #34d399; font-weight: bold; }
-        .error { margin-top: 20px; padding: 15px; border-radius: 6px; background: #450a0a; border: 1px solid #dc2626; color: #fecaca; display: none; }
-        .progress { margin-top: 20px; color: #94a3b8; display: none; }
-        button:disabled { background: #475569; cursor: wait; }
-        .hint { font-size: 12px; color: #64748b; margin-top: 4px; }
+        button.primary { margin-top: 15px; padding: 12px 20px; background: #0284c7; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; }
+        button.primary:hover { background: #0369a1; }
+        button:disabled { background: #475569 !important; cursor: wait; }
+        .hint { font-size: 13px; color: #64748b; margin-top: 8px; }
+        .msg { margin-top: 15px; padding: 12px; border-radius: 6px; display: none; }
+        .msg.ok { background: #064e3b; border: 1px solid #059669; }
+        .msg.err { background: #450a0a; border: 1px solid #dc2626; color: #fecaca; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #334155; padding: 10px; text-align: left; }
+        th { background: #0f172a; color: #38bdf8; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; background: #064e3b; color: #34d399; white-space: nowrap; }
+        .badge.warn { background: #78350f; color: #fcd34d; }
+        .badge.fail { background: #450a0a; color: #fca5a5; }
+        .badge.off { background: #334155; color: #94a3b8; }
+        .btn-small { border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; background: #b91c1c; }
+        .open-link { color: #34d399; font-weight: bold; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h2>💻 Request Cloud Workstation</h2>
-        <form id="requestForm">
-            <label for="username">Username / ID:</label>
-            <input type="text" id="username" placeholder="π.χ. test1" required maxlength="30"
-                   pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" title="Μόνο πεζά λατινικά, αριθμοί και παύλα (-)">
-            <div class="hint">Μόνο πεζά λατινικά, αριθμοί και παύλα (-), έως 30 χαρακτήρες.</div>
+    <div class="topbar">
+        <span>👤 <b id="whoName">…</b> <span id="whoEmail"></span> · <span id="whoRole"></span></span>
+        <span>
+            <a href="/admin" id="adminLink" class="hidden">🛡️ Admin Dashboard</a>
+            <button class="link-btn" onclick="togglePasswordForm()">🔑 Αλλαγή κωδικού</button>
+            <button class="link-btn" onclick="logout()">🚪 Αποσύνδεση</button>
+        </span>
+    </div>
 
-            <label for="profileSelect">Workstation Profile:</label>
-            <select id="profileSelect" required>
-                <option value="">Φόρτωση Προφίλ...</option>
-            </select>
+    <div class="container">
+        <div class="card hidden" id="passwordCard">
+            <h2>🔑 Αλλαγή κωδικού</h2>
+            <form id="passwordForm">
+                <label for="currentPassword">Τρέχων κωδικός</label>
+                <input type="password" id="currentPassword" autocomplete="current-password" required>
+                <label for="newPassword">Νέος κωδικός (τουλάχιστον 10 χαρακτήρες, γράμματα και αριθμοί)</label>
+                <input type="password" id="newPassword" autocomplete="new-password" required minlength="10">
+                <button type="submit" class="primary">Αποθήκευση</button>
+            </form>
+            <div id="passwordMsg" class="msg"></div>
+        </div>
 
-            <button type="submit" id="launchBtn">🚀 Launch Workstation Pod</button>
-        </form>
+        <div class="card">
+            <h2>💻 Νέο Cloud Workstation</h2>
+            <form id="requestForm">
+                <label for="profileSelect">Workstation Profile</label>
+                <select id="profileSelect" required>
+                    <option value="">Φόρτωση προφίλ...</option>
+                </select>
+                <button type="submit" class="primary" id="requestBtn">🚀 Αίτημα Workstation</button>
+                <div class="hint" id="requestHint"></div>
+            </form>
+            <div id="requestMsg" class="msg"></div>
+        </div>
 
-        <div id="progressBox" class="progress">⏳ Δημιουργία του Pod στο k3s και αναμονή μέχρι να γίνει Ready...</div>
-        <div id="errorBox" class="error"></div>
-
-        <div id="resultBox" class="result">
-            <strong>✅ Το Workstation είναι έτοιμο!</strong><br>
-            <span id="podInfo"></span><br><br>
-            <a id="accessLink" href="#" target="_blank">🔗 Άνοιγμα OpenVSCode Server</a>
+        <div class="card">
+            <h2>📋 Τα workstations μου</h2>
+            <label style="font-weight: normal;"><input type="checkbox" id="showHistory" style="width: auto;" onchange="renderMine()"> Εμφάνιση ιστορικού</label>
+            <table>
+                <thead>
+                    <tr><th>Αίτημα</th><th>Profile</th><th>Κατάσταση</th><th>Λήξη συνεδρίας</th><th>Πρόσβαση</th><th>Ενέργειες</th></tr>
+                </thead>
+                <tbody id="mineTable"><tr><td colspan="6">Φόρτωση...</td></tr></tbody>
+            </table>
         </div>
     </div>
 
     <script>
-        // Φόρτωση των προφίλ από τη βάση δεδομένων
+        const OPEN = ['WAITING_APPROVAL', 'PENDING', 'DEPLOYING', 'RUNNING'];
+        const STATUS_LABEL = {
+            WAITING_APPROVAL: ['⏳ Αναμονή έγκρισης', 'warn'],
+            PENDING: ['🚀 Δημιουργία…', 'warn'],
+            DEPLOYING: ['🚀 Δημιουργία…', 'warn'],
+            RUNNING: ['✅ Έτοιμο', ''],
+            REJECTED: ['❌ Απορρίφθηκε', 'fail'],
+            FAILED: ['⚠️ Απέτυχε', 'fail'],
+            EXPIRED: ['⌛ Έληξε', 'off'],
+            TERMINATED: ['⏹️ Τερματίστηκε', 'off'],
+        };
+        let me = null;
+        let mine = [];
+
+        function esc(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+        const fmt = (d) => d ? new Date(d).toLocaleString('el-GR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+
+        async function api(url, options = {}) {
+            const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
+            if (res.status === 401) { window.location.href = '/login'; throw new Error('Απαιτείται σύνδεση'); }
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            return data;
+        }
+
+        function showMsg(id, text, ok) {
+            const box = document.getElementById(id);
+            box.className = `msg ${ok ? 'ok' : 'err'}`;
+            box.innerText = text;
+            box.style.display = 'block';
+        }
+
+        async function loadMe() {
+            me = await api('/api/auth/me');
+            document.getElementById('whoName').innerText = me.full_name;
+            document.getElementById('whoEmail').innerText = `(${me.email})`;
+            document.getElementById('whoRole').innerText = me.role === 'admin' ? 'Admin' : 'Developer';
+            if (me.role === 'admin') document.getElementById('adminLink').classList.remove('hidden');
+            document.getElementById('requestHint').innerText = me.role === 'admin'
+                ? 'Ως admin, το αίτημά σου εγκρίνεται αυτόματα.'
+                : 'Το αίτημα θα σταλεί για έγκριση στον διαχειριστή. Η συνεδρία διαρκεί έως 10 ώρες από την έγκριση.';
+        }
+
         async function loadProfiles() {
-            const res = await fetch('/api/profiles');
-            const profiles = await res.json();
+            const profiles = await api('/api/profiles');
             const select = document.getElementById('profileSelect');
             select.replaceChildren(...profiles.map(p => new Option(`${p.display_name} (${p.name})`, p.id)));
         }
 
-        // Υποβολή αιτήματος
+        function renderMine() {
+            const showHistory = document.getElementById('showHistory').checked;
+            const rows = showHistory ? mine : mine.filter(w => OPEN.includes(w.status));
+            document.getElementById('mineTable').innerHTML = rows.map(w => {
+                const [label, cls] = STATUS_LABEL[w.status] || [w.status, ''];
+                const note = w.status === 'REJECTED' && w.review_note ? `<br><small>${esc(w.review_note)}</small>` : '';
+                const access = w.access_link ? `<a class="open-link" href="${esc(w.access_link)}" target="_blank" rel="noopener">🔗 Άνοιγμα VS Code</a>` : '-';
+                const action = w.status === 'WAITING_APPROVAL'
+                    ? `<button class="btn-small" onclick="terminate('${esc(w.id)}', this, 'Ακύρωση του αιτήματος;')">Ακύρωση</button>`
+                    : ['PENDING', 'DEPLOYING', 'RUNNING'].includes(w.status)
+                        ? `<button class="btn-small" onclick="terminate('${esc(w.id)}', this, 'Τερματισμός του workstation; Τα αρχεία του θα χαθούν.')">Τερματισμός</button>`
+                        : '-';
+                return `<tr>
+                    <td>${fmt(w.created_at)}</td>
+                    <td>${esc(w.profile_name)}</td>
+                    <td><span class="badge ${cls}">${label}</span>${note}</td>
+                    <td>${['PENDING', 'DEPLOYING', 'RUNNING'].includes(w.status) ? fmt(w.expires_at) : '-'}</td>
+                    <td>${access}</td>
+                    <td>${action}</td>
+                </tr>`;
+            }).join('') || `<tr><td colspan="6">${showHistory ? 'Δεν υπάρχουν workstations.' : 'Δεν έχεις ενεργά workstations ή αιτήματα.'}</td></tr>`;
+        }
+
+        async function loadMine() {
+            try {
+                mine = await api('/api/my/workstations');
+                renderMine();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function terminate(id, btn, question) {
+            if (!confirm(question)) return;
+            btn.disabled = true;
+            try {
+                await api(`/api/workstations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            } catch (err) {
+                alert(`Αποτυχία: ${err.message}`);
+            }
+            loadMine();
+        }
+
         document.getElementById('requestForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const username = document.getElementById('username').value.trim().toLowerCase();
-            const profile_id = document.getElementById('profileSelect').value;
-            const launchBtn = document.getElementById('launchBtn');
-            const progressBox = document.getElementById('progressBox');
-            const errorBox = document.getElementById('errorBox');
-            const resultBox = document.getElementById('resultBox');
-
-            launchBtn.disabled = true;
-            progressBox.style.display = 'block';
-            errorBox.style.display = 'none';
-            resultBox.style.display = 'none';
-
+            const btn = document.getElementById('requestBtn');
+            btn.disabled = true;
+            document.getElementById('requestMsg').style.display = 'none';
             try {
-                const res = await fetch('/api/workstations/request', {
+                const { data } = await api('/api/workstations/request', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, profile_id })
+                    body: JSON.stringify({ profile_id: document.getElementById('profileSelect').value }),
                 });
-                const data = await res.json();
-                if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
-
-                const expiresAt = new Date(data.data.expires_at).toLocaleString('el-GR', { dateStyle: 'short', timeStyle: 'short' });
-                document.getElementById('podInfo').innerText =
-                    `Pod Name: ${data.data.pod_name} | Status: ${data.data.status}\n⏱️ Η συνεδρία λήγει αυτόματα: ${expiresAt}`;
-                document.getElementById('accessLink').href = data.data.access_url;
-                resultBox.style.display = 'block';
+                showMsg('requestMsg', data.status === 'WAITING_APPROVAL'
+                    ? '✅ Το αίτημα στάλθηκε. Θα ενημερωθείς εδώ μόλις εγκριθεί.'
+                    : '✅ Το αίτημα εγκρίθηκε αυτόματα — το workstation δημιουργείται.', true);
+                loadMine();
             } catch (err) {
-                errorBox.innerText = `❌ ${err.message}`;
-                errorBox.style.display = 'block';
+                showMsg('requestMsg', `❌ ${err.message}`, false);
             } finally {
-                launchBtn.disabled = false;
-                progressBox.style.display = 'none';
+                btn.disabled = false;
             }
         });
 
-        loadProfiles();
+        function togglePasswordForm() {
+            document.getElementById('passwordCard').classList.toggle('hidden');
+        }
+
+        document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                await api('/api/auth/change-password', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        current_password: document.getElementById('currentPassword').value,
+                        new_password: document.getElementById('newPassword').value,
+                    }),
+                });
+                e.target.reset();
+                showMsg('passwordMsg', '✅ Ο κωδικός άλλαξε. Οι άλλες συνδέσεις σου αποσυνδέθηκαν.', true);
+            } catch (err) {
+                showMsg('passwordMsg', `❌ ${err.message}`, false);
+            }
+        });
+
+        async function logout() {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+        }
+
+        (async () => {
+            await loadMe();
+            await Promise.all([loadProfiles(), loadMine()]);
+            setInterval(loadMine, 5000); // live ενημέρωση κατάστασης
+        })().catch(err => console.error(err));
     </script>
 </body>
 </html>
