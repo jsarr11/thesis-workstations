@@ -21,6 +21,11 @@
         th, td { border: 1px solid #334155; padding: 12px; text-align: left; }
         th { background: #0f172a; color: #38bdf8; }
         .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; background: #064e3b; color: #34d399; }
+        .badge.warn { background: #78350f; color: #fcd34d; }
+        .badge.fail { background: #450a0a; color: #fca5a5; }
+        .badge.off { background: #334155; color: #94a3b8; }
+        .btn-danger { background: #b91c1c; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-danger:disabled { background: #475569; cursor: wait; }
         
         /* Toggle Switch Checkbox Styling */
         .switch { position: relative; display: inline-block; width: 46px; height: 24px; }
@@ -70,7 +75,7 @@
     </div>
 
     <div id="workstations" class="tab-content">
-        <h3 style="color: #38bdf8; margin-top: 0;">Ενεργά Workstation Pods</h3>
+        <h3 style="color: #38bdf8; margin-top: 0;">Workstation Pods (ενεργά & ιστορικό)</h3>
         <table>
             <thead>
                 <tr>
@@ -80,10 +85,11 @@
                     <th>Client IP</th>
                     <th>Status</th>
                     <th>Access URL</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="workstationsTable">
-                <tr><td colspan="6">Φόρτωση δεδομένων...</td></tr>
+                <tr><td colspan="7">Φόρτωση δεδομένων...</td></tr>
             </tbody>
         </table>
     </div>
@@ -107,6 +113,29 @@
     </div>
 
     <script>
+        // Escape τιμών από τη βάση πριν μπουν σε HTML (προστασία από XSS)
+        function esc(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function statusBadge(status) {
+            const cls = { RUNNING: '', SUCCESS: '', PENDING: 'warn', DEPLOYING: 'warn', FAILED: 'fail', TERMINATED: 'off' }[status] ?? '';
+            return `<span class="badge ${cls}">${esc(status)}</span>`;
+        }
+
+        const ACTIVE = ['PENDING', 'DEPLOYING', 'RUNNING'];
+
+        async function terminateWorkstation(id, btn) {
+            if (!confirm('Τερματισμός του workstation; Το Pod και το Service θα διαγραφούν.')) return;
+            btn.disabled = true;
+            const res = await fetch(`/api/workstations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                alert(`Αποτυχία: ${data.error || res.status}`);
+            }
+            loadAdminData();
+        }
+
         // Tab Switcher
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -129,14 +158,14 @@
 
             tbody.innerHTML = policies.map(p => `
                 <tr>
-                    <td><b>${p.profile_name}</b></td>
-                    <td><code>${p.rule_key}</code></td>
-                    <td>${p.description}</td>
-                    <td><span style="color:#f59e0b;">${p.iso_control}</span></td>
-                    <td><code>${p.custom_value || '-'}</code></td>
+                    <td><b>${esc(p.profile_name)}</b></td>
+                    <td><code>${esc(p.rule_key)}</code></td>
+                    <td>${esc(p.description)}</td>
+                    <td><span style="color:#f59e0b;">${esc(p.iso_control)}</span></td>
+                    <td><code>${esc(p.custom_value || '-')}</code></td>
                     <td>
                         <label class="switch">
-                            <input type="checkbox" ${p.is_enabled ? 'checked' : ''} onchange="togglePolicy(${p.id}, this.checked)">
+                            <input type="checkbox" ${p.is_enabled ? 'checked' : ''} onchange="togglePolicy(${Number(p.id)}, this.checked)">
                             <span class="slider"></span>
                         </label>
                     </td>
@@ -163,14 +192,15 @@
             const workstations = await resW.json();
             document.getElementById('workstationsTable').innerHTML = workstations.map(w => `
                 <tr>
-                    <td><b>${w.username}</b></td>
-                    <td>${w.profile_name}</td>
-                    <td><code>${w.pod_name}</code></td>
-                    <td>${w.client_ip}</td>
-                    <td><span class="badge">${w.status}</span></td>
-                    <td><a href="${w.access_url}" target="_blank" style="color:#38bdf8;">Open IDE</a></td>
+                    <td><b>${esc(w.username)}</b></td>
+                    <td>${esc(w.profile_name)}</td>
+                    <td><code>${esc(w.pod_name)}</code></td>
+                    <td>${esc(w.client_ip)}</td>
+                    <td>${statusBadge(w.status)}</td>
+                    <td>${w.status === 'RUNNING' && w.access_url ? `<a href="${esc(w.access_url)}" target="_blank" style="color:#38bdf8;">Open IDE</a>` : '-'}</td>
+                    <td>${ACTIVE.includes(w.status) ? `<button class="btn-danger" onclick="terminateWorkstation('${esc(w.id)}', this)">Terminate</button>` : '-'}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="6">Δεν υπάρχουν ενεργά workstations.</td></tr>';
+            `).join('') || '<tr><td colspan="7">Δεν υπάρχουν workstations.</td></tr>';
 
             // Audit Logs
             const resA = await fetch('/api/audit-logs');
@@ -178,10 +208,10 @@
             document.getElementById('auditTable').innerHTML = logs.map(l => `
                 <tr>
                     <td>${new Date(l.timestamp).toLocaleString()}</td>
-                    <td>${l.username}</td>
-                    <td><code>${l.stage}</code></td>
-                    <td>${l.rule_evaluated}</td>
-                    <td><span class="badge">${l.status}</span></td>
+                    <td>${esc(l.username)}</td>
+                    <td><code>${esc(l.stage)}</code></td>
+                    <td>${esc(l.rule_evaluated)}</td>
+                    <td>${statusBadge(l.status)}</td>
                 </tr>
             `).join('') || '<tr><td colspan="5">Δεν υπάρχουν καταγεγραμμένα audit logs.</td></tr>';
         }

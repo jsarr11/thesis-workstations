@@ -4,8 +4,8 @@ const path = require('path');
 const pool = require('./db');
 require('dotenv').config();
 
-// Φορτώνουμε τον Kubernetes Client
-const k8sClient = require('./k8s');
+// Lifecycle των workstations στο k3s (χρησιμοποιεί τον Kubernetes client)
+const workstations = require('./workstations');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -35,7 +35,7 @@ app.get('/api/profiles', async (req, res) => {
 app.get('/api/policies', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT pr.*, p.display_name as profile_name 
+      SELECT pr.*, p.display_name as profile_name
       FROM policy_rules pr
       JOIN profiles p ON pr.profile_id = p.id
       ORDER BY pr.id ASC
@@ -59,97 +59,62 @@ app.post('/api/policies/toggle', async (req, res) => {
   }
 });
 
-// 5. POST /api/workstations/request - REAL PROVISIONING (K3s Deployment)
+// 5. POST /api/workstations/request - Δημιουργία workstation στο k3s
 app.post('/api/workstations/request', async (req, res) => {
-  const { username, profile_id } = req.body;
-  const client_ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+  const username = String(req.body.username || '').trim().toLowerCase();
+  const profileId = Number.parseInt(req.body.profile_id, 10);
+
+  if (!workstations.USERNAME_PATTERN.test(username)) {
+    return res.status(400).json({
+      error: 'Μη έγκυρο username: μόνο πεζά λατινικά, αριθμοί και παύλα (-), έως 30 χαρακτήρες.',
+    });
+  }
+  if (!Number.isInteger(profileId)) {
+    return res.status(400).json({ error: 'Μη έγκυρο profile' });
+  }
 
   try {
-    // 1. Βρίσκουμε το image tag από τη βάση
-    const profileRes = await pool.query('SELECT image_tag FROM profiles WHERE id = $1', [profile_id]);
+    const profileRes = await pool.query('SELECT id, image_tag FROM profiles WHERE id = $1', [profileId]);
     if (profileRes.rows.length === 0) {
       return res.status(400).json({ error: 'Profile not found' });
     }
-    const imageTag = profileRes.rows[0].image_tag;
 
-    // Δημιουργούμε το μοναδικό όνομα του Pod
-    const podName = `workstation-${username.toLowerCase()}-${Date.now().toString().slice(-4)}`;
-
-    // 2. Το "Γυμνό" Pod Manifest (Απροστάτευτο baseline)
-    const podManifest = {
-      apiVersion: 'v1',
-      kind: 'Pod',
-      metadata: { 
-        name: podName, 
-        labels: { app: podName } 
-      },
-      spec: {
-        containers: [{
-          name: 'workspace',
-          image: imageTag, // Π.χ. workstation-profile:developer
-          imagePullPolicy: 'Never', // Έχουμε κάνει ήδη import τα images στο containerd
-          ports: [{ containerPort: 3000 }]
-        }]
-      }
-    };
-
-    // 3. Το Service Manifest (Για να βγάλουμε το web UI του VS Code προς τα έξω)
-    const serviceManifest = {
-      apiVersion: 'v1',
-      kind: 'Service',
-      metadata: { name: `${podName}-svc` },
-      spec: {
-        type: 'NodePort',
-        selector: { app: podName },
-        ports: [{ port: 3000, targetPort: 3000 }]
-      }
-    };
-
-    // 4. Αποστολή αιτημάτων στο k3s με τη μορφή Object (named parameters)
-    console.log(`[K8s] Deploying Pod ${podName} in namespace: ${k8sClient.k8sNamespace}...`);
-    
-    await k8sClient.k8sCoreApi.createNamespacedPod({
-      namespace: k8sClient.k8sNamespace,
-      body: podManifest
+    const workstation = await workstations.provisionWorkstation({
+      username,
+      profile: profileRes.rows[0],
+      clientIp: req.ip || '127.0.0.1',
+      // Αν δεν οριστεί PUBLIC_HOST, χρησιμοποιείται η διεύθυνση με την οποία ο χρήστης άνοιξε το portal
+      publicHost: process.env.PUBLIC_HOST || req.hostname,
     });
-
-    console.log(`[K8s] Creating Service ${podName}-svc...`);
-    
-    const svcResponse = await k8sClient.k8sCoreApi.createNamespacedService({
-      namespace: k8sClient.k8sNamespace,
-      body: serviceManifest
-    });
-
-    // 5. Λήψη του τυχαίου NodePort που άνοιξε το k3s και δημιουργία του URL
-    const nodePort = svcResponse.spec?.ports[0]?.nodePort || svcResponse.body?.spec?.ports[0]?.nodePort;
-    const access_url = `http://192.168.1.248:${nodePort}/?folder=/home/workspace`;
-
-    // 6. Καταγραφή στη Βάση Δεδομένων
-    const result = await pool.query(
-      `INSERT INTO workstation_requests (username, client_ip, profile_id, status, pod_name, access_url)
-       VALUES ($1, $2, $3, 'RUNNING', $4, $5) RETURNING *`,
-      [username, client_ip, profile_id, podName, access_url]
-    );
-
-    // 7. Καταγραφή στο Audit Log (ότι σηκώθηκε απροστάτευτο)
-    await pool.query(
-      `INSERT INTO audit_logs (workstation_id, stage, rule_evaluated, status, details)
-       VALUES ($1, 'PROVISIONING', 'BASELINE-DEPLOY', 'SUCCESS', $2)`,
-      [result.rows[0].id, JSON.stringify({ message: 'Unhardened Workstation deployed to K3s', nodePort })]
-    );
-
-    res.json({ success: true, data: result.rows[0] });
+    res.json({ success: true, data: workstation });
   } catch (err) {
-    console.error('[K8s API Error]:', err.response ? JSON.stringify(err.response.body) : err.message);
-    res.status(500).json({ error: 'Failed to deploy workstation to cluster' });
+    res.status(500).json({ error: `Η δημιουργία απέτυχε: ${err.message}` });
   }
 });
 
-// 6. GET /api/workstations - Λίστα Ενεργών Workstations
+// 6. DELETE /api/workstations/:id - Τερματισμός workstation (Pod + Service)
+app.delete('/api/workstations/:id', async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) {
+    return res.status(404).json({ error: 'Workstation not found' });
+  }
+  try {
+    const ws = await workstations.terminateWorkstation(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workstation not found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[ERROR] Terminate failed:', workstations.describeK8sError(err));
+    res.status(500).json({ error: 'Failed to terminate workstation' });
+  }
+});
+
+// 7. GET /api/workstations - Λίστα Workstations (συγχρονισμένη με το cluster)
 app.get('/api/workstations', async (req, res) => {
   try {
+    await workstations.reconcileWithCluster().catch((err) =>
+      console.error('[WARN] Reconcile with cluster failed:', workstations.describeK8sError(err))
+    );
     const result = await pool.query(`
-      SELECT wr.*, p.display_name as profile_name 
+      SELECT wr.*, p.display_name as profile_name
       FROM workstation_requests wr
       JOIN profiles p ON wr.profile_id = p.id
       ORDER BY wr.created_at DESC
@@ -161,11 +126,11 @@ app.get('/api/workstations', async (req, res) => {
   }
 });
 
-// 7. GET /api/audit-logs - Ιστορικό Ελέγχων
+// 8. GET /api/audit-logs - Ιστορικό Ελέγχων
 app.get('/api/audit-logs', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT al.*, wr.username, wr.pod_name 
+      SELECT al.*, wr.username, wr.pod_name
       FROM audit_logs al
       JOIN workstation_requests wr ON al.workstation_id = wr.id
       ORDER BY al.timestamp DESC
@@ -187,7 +152,5 @@ app.get('/admin', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`[SERVER] Manager API & Frontend UI running on http://192.168.1.248:${PORT}`);
+  console.log(`[SERVER] Manager API & Frontend UI running on port ${PORT}`);
 });
-
-//test line-2
