@@ -2,6 +2,8 @@
 # 07: credentials · 08: lab log containing passwords in plain text (public repo)
 info/07-proxmox-credentials.docx
 info/08-workflow.docx
+# Υλικό τρίτων (οδηγός και πρότυπο του πανεπιστημίου): μόνο τοπικά
+info/Thesis-Report/University-Prototypes/
 
 # Environment files & Secrets
 .env
