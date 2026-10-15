@@ -1,8 +1,9 @@
 // Κατάλογος κανόνων. Κάθε κανόνας είναι ανεξάρτητο module· νέος κανόνας = νέο αρχείο + μία γραμμή εδώ.
-const RULESET_VERSION = '0.1.0';
+const RULESET_VERSION = '0.2.0';
 
 const RULES = [
   require('./a-8-9-configuration-management'),
+  require('./a-8-28-secure-coding'),
 ];
 
 // Περιγραφή χωρίς κώδικα, για το GET /rules και το report.

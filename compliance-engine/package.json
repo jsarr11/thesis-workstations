@@ -1,6 +1,6 @@
 {
   "name": "compliance-engine",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Standalone compliance & auto-remediation engine for Kubernetes workloads (ISO/IEC 27001:2022 Annex A.8, CIS Benchmarks)",
   "main": "src/engine.js",
   "private": true,

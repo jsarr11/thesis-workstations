@@ -238,6 +238,7 @@ Configuration (`manager/.env`): `SESSION_TTL_HOURS` (default `10`), `REPORT_TIME
 - [ ] **Phase 2 — compliance engine** — built as a standalone, portable tool in [`compliance-engine/`](compliance-engine/about.md) (API, admission webhook, CLI, own UI); the platform only calls it before deploying
   - [x] Engine API (`/evaluate`), evidence store (per-workstation report with SHA-256, daily decision log), platform integration (fail-closed), downloadable report
   - [x] Rule A.8.9 Configuration management (CIS Kubernetes 5.2.3–5.2.6, 5.2.12, 5.2.13), switchable per profile
+  - [x] Rule A.8.28 Secure coding (CIS Kubernetes 5.2.7: `runAsNonRoot: true`, explicit root is blocked), switchable per profile
   - [x] A.8.9 second line of defence and review: dedicated `workstations` namespace with Pod Security Admission (`enforce: baseline`), daily / on-deploy / on-demand cluster review with kube-bench (`cluster-logs`, also embedded in every workspace-logs)
   - [ ] Stage 1: image scanning with Trivy (0 Critical / 0 High gate)
   - [ ] Stage 2: remaining manifest rules (non-root, read-only root FS, dropped capabilities, resource limits, NetworkPolicies)

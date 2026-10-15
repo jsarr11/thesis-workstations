@@ -343,7 +343,7 @@ systemctl is-enabled pm2-$USER          # πρέπει: enabled
 ### 9.2 Έλεγχος
 ```bash
 pm2 status                                                 # manager & compliance-engine: online
-curl -s http://localhost:5100/health                       # {"status":"UP",...,"rules":["A.8.9"]}
+curl -s http://localhost:5100/health                       # {"status":"UP",...,"rules":["A.8.9","A.8.28"]}
 curl -s http://localhost:5000/api/health                   # {"status":"UP",...}
 sudo k3s ctr -n k8s.io images ls -q | grep workstation     # 3 images
 df -h /                                                    # κάτω από 80%

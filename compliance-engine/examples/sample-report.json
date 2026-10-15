@@ -1,12 +1,12 @@
 {
   "report_type": "compliance-evaluation",
   "schema_version": 1,
-  "report_id": "76c3e439-8d07-4d9b-aea8-f93897615ff9",
-  "generated_at": "2026-10-15T15:03:08.871Z",
+  "report_id": "5407599f-a953-497c-9339-8d392e7e34a4",
+  "generated_at": "2026-10-15T15:41:55.060Z",
   "engine": {
     "name": "compliance-engine",
-    "version": "0.1.0",
-    "ruleset_version": "0.1.0"
+    "version": "0.2.0",
+    "ruleset_version": "0.2.0"
   },
   "subject": {
     "kind": "Pod",
@@ -29,12 +29,13 @@
   "compliant": true,
   "summary": {
     "rules_enabled": [
-      "A.8.9"
+      "A.8.9",
+      "A.8.28"
     ],
     "rules_disabled": [],
-    "checks_total": 6,
-    "passed": 5,
-    "remediated": 1,
+    "checks_total": 8,
+    "passed": 6,
+    "remediated": 2,
     "blocked": 0,
     "violations_not_enforced": 0
   },
@@ -104,18 +105,51 @@
           "status": "PASS"
         }
       ]
+    },
+    {
+      "rule": "A.8.28",
+      "title": "Secure coding",
+      "iso": {
+        "standard": "ISO/IEC 27001:2022",
+        "control": "A.8.28",
+        "name": "Secure coding"
+      },
+      "source": "CIS Kubernetes Benchmark v1.8, §5.2.7 Minimize the admission of root containers",
+      "enabled": true,
+      "setting_changed_by": "admin@example.com",
+      "setting_changed_at": "2026-10-15T09:10:00.000Z",
+      "outcome": "REMEDIATED",
+      "checks": [
+        {
+          "check": "CIS-5.2.7a",
+          "title": "Containers must be required to run as a non-root user (runAsNonRoot: true)",
+          "target": "spec.securityContext.runAsNonRoot",
+          "before": null,
+          "expected": true,
+          "after": true,
+          "status": "REMEDIATED"
+        },
+        {
+          "check": "CIS-5.2.7b",
+          "title": "Minimize the admission of containers that explicitly run as root",
+          "target": "spec.securityContext.runAsUser, spec.containers[*].securityContext.runAsUser/runAsNonRoot",
+          "before": null,
+          "expected": null,
+          "status": "PASS"
+        }
+      ]
     }
   ],
   "unknown_rules": [],
   "manifest": {
     "sha256_before": "8f11399def6089d6858db2995dd63b85d7bce9e16ec1bd40566dd8d5786b8a99",
-    "sha256_after": "42454d16b9945e458ab92762357f6c39f7a5855ca4e0a6aacd67c43d2ab500d5",
+    "sha256_after": "d34c0430a3d5e02f800afd319680de2c34a4392172b18dcffeb2bd10dc432315",
     "changed": true
   },
   "cluster_review": {
     "available": true,
     "cluster_report_sha256": "4bc243f8a21cda89cfe18b9124a8de023cecf4d5716605b85513cf8a7d6200d3",
-    "age_hours": 4.2,
+    "age_hours": 4.8,
     "report_type": "cluster-review",
     "schema_version": 1,
     "scan_id": "4fac4388-b971-4c6b-b68b-8a32ce51edaf",
@@ -229,6 +263,29 @@
         {
           "id": "CIS-5.2.13",
           "title": "Minimize the admission of containers which use HostPorts",
+          "remediation": "block"
+        }
+      ]
+    },
+    {
+      "id": "A.8.28",
+      "title": "Secure coding",
+      "iso": {
+        "standard": "ISO/IEC 27001:2022",
+        "control": "A.8.28",
+        "name": "Secure coding"
+      },
+      "source": "CIS Kubernetes Benchmark v1.8, §5.2.7 Minimize the admission of root containers",
+      "description": "Secure coding principles shall be applied to software development.",
+      "checks": [
+        {
+          "id": "CIS-5.2.7a",
+          "title": "Containers must be required to run as a non-root user (runAsNonRoot: true)",
+          "remediation": "auto"
+        },
+        {
+          "id": "CIS-5.2.7b",
+          "title": "Minimize the admission of containers that explicitly run as root",
           "remediation": "block"
         }
       ]
