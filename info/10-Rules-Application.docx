@@ -180,3 +180,10 @@ Tier 1
     Το Compliance Engine τρέχει το kube-bench με το kubeconfig του VM (πλήρη δικαιώματα). Λύνεται με τον A.8.3 (ServiceAccount με ελάχιστα δικαιώματα).
 
 Κατάσταση: ο A.8.9 καλύπτεται πλήρως. Μένει η δοκιμή στο VM (08-workflow, Step 25.4).
+
+
+Δοκιμή στο VM (15/10/2026 13:58, 08-workflow Step 26): ΕΠΙΤΥΧΗΣ
+    2η γραμμή άμυνας: kubectl run psa-test -n workstations ... hostPID:true
+        → Forbidden: violates PodSecurity "baseline:latest": host namespaces (hostPID=true)
+    Επανεξέταση: kube-bench έτρεξε, cluster-logs στο Audit Trail.
+ΚΑΤΑΣΤΑΣΗ A.8.9: ΟΛΟΚΛΗΡΩΘΗΚΕ (5/5 απαιτήσεις του ISO, δύο γραμμές άμυνας, δοκιμασμένο στο VM).
