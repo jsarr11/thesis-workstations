@@ -67,6 +67,17 @@ test('evaluate returns the remediated manifest and stores a verifiable report an
   assert.equal(line.report_sha256, body.report_sha256);
 });
 
+test('evaluate reports rules that the engine does not know', async () => {
+  const res = await call('/evaluate', {
+    method: 'POST',
+    body: JSON.stringify({ manifest: pod, rules: [{ id: 'A.8.9', enabled: true }, { id: 'A.8.99', enabled: true }] }),
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.deepEqual(body.unknown_rules, ['A.8.99']);
+  assert.equal(body.decision, 'ALLOW');
+});
+
 test('invalid input is rejected with a clear status', async () => {
   assert.equal((await call('/evaluate', { method: 'POST', body: '{not json' })).status, 400);
   assert.equal((await call('/evaluate', { method: 'POST', body: JSON.stringify({}) })).status, 400);

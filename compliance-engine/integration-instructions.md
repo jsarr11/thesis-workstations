@@ -66,6 +66,7 @@ curl http://127.0.0.1:5100/health
   "compliant": true,
   "summary": { "rules_enabled": ["A.8.9"], "rules_disabled": [], "checks_total": 6, "passed": 5, "remediated": 1, "blocked": 0, "violations_not_enforced": 0 },
   "rules": [ { "rule": "A.8.9", "enabled": true, "outcome": "REMEDIATED" } ],
+  "unknown_rules": [],
   "manifest": { "...": "το διορθωμένο manifest, έτοιμο για deploy" }
 }
 ```
@@ -75,10 +76,11 @@ curl http://127.0.0.1:5100/health
 - Γίνεται deploy **το manifest της απάντησης**, όχι το αρχικό.
 - Κρατήστε τα `report_id` και `report_sha256`. Όταν κατεβάζετε το report (`GET /reports/:id`), ελέγξτε ότι το SHA-256 των bytes ταιριάζει· αν όχι, το report έχει αλλοιωθεί.
 - `outcome` ανά κανόνα: `COMPLIANT`, `REMEDIATED`, `BLOCKED`, `DISABLED_VIOLATIONS_FOUND`, `DISABLED_NO_VIOLATIONS`.
+- `unknown_rules`: κανόνες που έστειλε η πλατφόρμα αλλά δεν υπάρχουν στο εργαλείο (π.χ. λάθος ID ή κανόνας νεότερης έκδοσης). Αγνοούνται στην αξιολόγηση· αν η λίστα δεν είναι κενή, η πλατφόρμα πρέπει να το ελέγξει, γιατί ένας κανόνας που θεωρεί ενεργό δεν εφαρμόζεται.
 
 Κωδικοί σφάλματος: `400` λάθος αίτημα, `401` λάθος/χωρίς API key, `413` πολύ μεγάλο σώμα (> 1 MB), `422` μη υποστηριζόμενο είδος manifest.
 
-Πλήρες δείγμα report: [examples/sample-report.json](examples/sample-report.json).
+Πλήρες δείγμα report: [examples/sample-report.json](examples/sample-report.json). Η ενότητα `cluster_review` του δείγματος περιέχει απόσπασμα του πρώτου πραγματικού review του cluster (3 από τα 130 αποτελέσματα του kube-bench).
 
 ### 3.2 Επανεξέταση του cluster (A.8.9 «reviewed»)
 
@@ -93,7 +95,7 @@ POST /cluster/scan
 
 - `trigger`: `SCHEDULED` (αυτόματο), `STARTUP` (εκκίνηση/deploy) ή `MANUAL` (κατ' απαίτηση από χρήστη).
 - `requested_by`: ποιος το ζήτησε (για τα `MANUAL`), μπαίνει στο report.
-- Η κλήση περιμένει να τελειώσει το scan (έως `CLUSTER_SCAN_TIMEOUT_SECONDS`, προεπιλογή 300''. Την πρώτη φορά κατεβαίνει και το image). Δύο scans δεν τρέχουν ταυτόχρονα (`409`).
+- Η κλήση περιμένει να τελειώσει το scan (έως `CLUSTER_SCAN_TIMEOUT_SECONDS`, προεπιλογή 300 δευτερόλεπτα· την πρώτη φορά κατεβαίνει και το image). Δύο scans δεν τρέχουν ταυτόχρονα (`409`).
 
 **Απάντηση:**
 
@@ -128,6 +130,7 @@ POST /cluster/scan
 | Hardening των images στο build (non-root, χωρίς sudo, pinned εκδόσεις) | Το εργαλείο ελέγχει τα images, δεν τα ξαναχτίζει | A.8.28, A.8.2 |
 | Υπογραφή των images (Cosign) | Ο κανόνας απορρίπτει ανυπόγραφα images | A.8.4 |
 | Ingress με TLS, αν εκτίθενται υπηρεσίες | Το εργαλείο ελέγχει τη ρύθμιση, δεν εγκαθιστά certificates | A.8.24, A.8.21 |
+| Backup του `compliance-engine/data/` (reports, cluster-logs, logs αποφάσεων) | Είναι τα αποδεικτικά· το εργαλείο τα γράφει, δεν κρατά αντίγραφα | A.8.13, A.8.15 |
 | Ενεργό audit logging στο cluster | Το εργαλείο το ελέγχει, δεν αλλάζει τις ρυθμίσεις του k3s | A.8.15 |
 
 ## 5. Αν το εργαλείο δεν είναι διαθέσιμο
