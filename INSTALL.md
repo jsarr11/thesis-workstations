@@ -250,7 +250,8 @@ DB_PORT=5432
 DB_USER=thesis_admin
 DB_PASSWORD=<ο-ίδιος-κωδικός-του-6.2>
 DB_NAME=thesis_workstations_db
-K8S_NAMESPACE=default
+# Namespace των workstations, με Pod Security Admission (το δημιουργεί το deploy.sh)
+K8S_NAMESPACE=workstations
 
 # Προαιρετικά:
 # PUBLIC_HOST=<ip-του-vm>       # αν λείπει, χρησιμοποιείται η διεύθυνση με την οποία άνοιξες το portal
@@ -315,10 +316,11 @@ bash deploy.sh
 Τι κάνει, με τη σειρά:
 1. `git pull` και `npm ci`, δηλαδή εγκατάσταση των βιβλιοθηκών του Manager
 2. ξεκινά το **Compliance Engine** με PM2 (`compliance-engine`). Την πρώτη φορά δημιουργεί το `compliance-engine/.env` με τυχαίο API key και προσθέτει τη σύνδεση (`COMPLIANCE_ENGINE_URL`, `COMPLIANCE_ENGINE_API_KEY`) στο `manager/.env`
-3. ξεκινά τον Manager με PM2 (`manager`)
-4. **χτίζει** τα 4 images (base, developer, data-analyst, devops). Αυτό διαρκεί **15–30 λεπτά** την πρώτη φορά.
-5. τα **εισάγει** στο k3s
-6. ελέγχει ότι ο Manager απαντά (health check)
+3. εφαρμόζει το namespace `workstations` με Pod Security Admission (`deploy/k8s/workstations-namespace.yaml`) και, την πρώτη φορά, ορίζει `K8S_NAMESPACE=workstations` στο `manager/.env`
+4. ξεκινά τον Manager με PM2 (`manager`). Λίγο μετά την εκκίνηση τρέχει και ο πρώτος έλεγχος του cluster (kube-bench). Την πρώτη φορά κατεβαίνει το image `aquasec/kube-bench`, οπότε χρειάζεται ίντερνετ
+5. **χτίζει** τα 4 images (base, developer, data-analyst, devops). Αυτό διαρκεί **15–30 λεπτά** την πρώτη φορά.
+6. τα **εισάγει** στο k3s
+7. ελέγχει ότι ο Manager απαντά (health check)
 
 Στο τέλος πρέπει να δεις:
 ```
@@ -478,6 +480,8 @@ pm2 logs manager                # τα logs του Manager ([LOG] Step 1..5); Ct
 | «Πολλές αποτυχημένες προσπάθειες» στο login | 5 λάθος κωδικοί σε 15 λεπτά (προστασία από brute-force) | περίμενε 15 λεπτά ή `pm2 restart manager` |
 | Ο Manager δεν ξεκινά: `Database migrations failed` | σφάλμα στο σχήμα της βάσης | `pm2 logs manager` για τη λεπτομέρεια. Τα migrations βρίσκονται στο `database/migrations/` |
 | Κάθε νέο workstation βγαίνει «⚠️ Απέτυχε» και στο Audit Trail υπάρχει `COMPLIANCE-ENGINE` / `FAILED` | το Compliance Engine δεν τρέχει ή το API key διαφέρει (fail-closed: χωρίς έλεγχο δεν γίνεται deploy) | `pm2 status`, `pm2 logs compliance-engine`, `curl -s http://localhost:5100/health`. Το `COMPLIANCE_ENGINE_API_KEY` του `manager/.env` πρέπει να είναι ίδιο με το `API_KEY` του `compliance-engine/.env`· μετά `bash deploy.sh` |
+| Το deploy σταματά με «Υπάρχουν ακόμα N workstation Pods στο namespace 'default'» | πρώτο deploy μετά τη μεταφορά των workstations στο namespace `workstations` | τερμάτισε τα workstations από το `/admin` (ή `kubectl delete pods,svc,secrets -l managed-by=thesis-manager -n default`) και ξανά `bash deploy.sh` (ή Re-run στο GitHub Actions) |
+| Στο Audit Trail `CLUSTER / CIS-SCAN` με status `FAILED` | το kube-bench δεν έτρεξε (π.χ. δεν κατέβηκε το image, χωρίς ίντερνετ) | κατέβασε το 📄 cluster-logs (γράφει το σφάλμα), `kubectl get pods -n compliance-system`, `pm2 logs compliance-engine` |
 | Workstation «⚠️ Απέτυχε» με «Μπλοκαρίστηκε από τον έλεγχο συμμόρφωσης» | παράβαση που δεν διορθώνεται αυτόματα (π.χ. hostPath) | ο admin κατεβάζει το 📄 workspace-logs (καρτέλα Workstations ή Audit Trail, γραμμή `COMPLIANCE-GATE`): γράφει ποιος έλεγχος (CIS) απέτυχε και γιατί |
 | Το VS Code δεν ανοίγει με το link | το link άνοιξε χωρίς το `tkn=` ή το workstation έληξε | άνοιξέ το ξανά από το portal («Τα workstations μου») |
 | «Forbidden» σε ένα VS Code όταν είναι ανοιχτά δύο workstations | workstation παλαιότερο του Step 24: όλα μοιράζονταν το ίδιο cookie token στην ίδια IP | άνοιξέ το ξανά από το link του portal. Τα νέα workstations τρέχουν σε δικό τους path (`/<όνομα-pod>/`) και δεν συγκρούονται |

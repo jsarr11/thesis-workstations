@@ -3,11 +3,15 @@
 //   GET  /rules         κατάλογος κανόνων                              (API key)
 //   POST /evaluate      { manifest, rules, context } → report + manifest (API key)
 //   GET  /reports/:id   το αποθηκευμένο report, αυτούσιο                (API key)
+//   POST /cluster/scan  επανεξέταση του cluster (kube-bench + PSA)     (API key)
+//   GET  /cluster/latest           σύνοψη του τελευταίου scan          (API key)
+//   GET  /cluster/reports/:id      το αποθηκευμένο cluster-logs        (API key)
 const http = require('http');
 const crypto = require('crypto');
 const { loadConfig } = require('./config');
 const { evaluate } = require('./engine');
 const { createStore } = require('./store');
+const { createCluster } = require('./cluster');
 const { UnsupportedManifestError } = require('./workload');
 const { RULES, RULESET_VERSION, describeRule } = require('./rules');
 const { version: ENGINE_VERSION } = require('../package.json');
@@ -60,8 +64,25 @@ function isAuthorized(req, apiKey) {
   return provided.length > 0 && crypto.timingSafeEqual(a, b);
 }
 
-function createServer(config) {
+const DEFAULT_CLUSTER = {
+  kubectl: 'kubectl', kubeconfig: '', namespaces: ['workstations'], scanNamespace: 'compliance-system',
+  kubeBenchImage: 'docker.io/aquasec/kube-bench:v0.15.6', kubeBenchBenchmark: '', scanTimeoutSeconds: 300,
+};
+
+const clusterSummary = (report, sha) => ({
+  scan_id: report.scan_id,
+  report_sha256: sha,
+  status: report.status,
+  trigger: report.trigger,
+  generated_at: report.generated_at,
+  summary: report.summary,
+  ...(report.error ? { error: report.error } : {}),
+});
+
+function createServer(config, { cluster } = {}) {
   const store = createStore(config.dataDir);
+  const clusterReviewer = cluster || createCluster({ ...DEFAULT_CLUSTER, ...(config.cluster || {}) });
+  let scanRunning = false;
 
   async function handle(req, res) {
     const url = new URL(req.url, 'http://localhost');
@@ -84,7 +105,12 @@ function createServer(config) {
       }
       let result;
       try {
-        result = evaluate({ manifest: body.manifest, rules: body.rules || [], context: body.context || {} });
+        result = evaluate({
+          manifest: body.manifest,
+          rules: body.rules || [],
+          context: body.context || {},
+          clusterReview: store.latestClusterReport(),
+        });
       } catch (err) {
         if (err instanceof UnsupportedManifestError) throw new HttpError(422, err.message);
         throw err;
@@ -102,6 +128,37 @@ function createServer(config) {
         rules: report.rules.map((r) => ({ rule: r.rule, enabled: r.enabled, outcome: r.outcome })),
         manifest,
       });
+    }
+
+    // ---------- Επανεξέταση του cluster ----------
+    if (req.method === 'POST' && url.pathname === '/cluster/scan') {
+      const body = await readJsonBody(req);
+      if (scanRunning) throw new HttpError(409, 'A cluster scan is already running');
+      scanRunning = true;
+      try {
+        const trigger = ['MANUAL', 'SCHEDULED', 'STARTUP'].includes(body.trigger) ? body.trigger : 'MANUAL';
+        const report = await clusterReviewer.scan({ trigger, requested_by: body.requested_by ? String(body.requested_by) : null });
+        const sha = store.saveClusterReport(report);
+        console.log(`[ENGINE] Cluster review ${report.status} (${trigger}) scan=${report.scan_id} `
+          + `pass=${report.summary.pass} fail=${report.summary.fail} warn=${report.summary.warn} psa_ok=${report.summary.psa_compliant}`
+          + (report.error ? ` error=${report.error}` : ''));
+        return sendJson(res, 200, clusterSummary(report, sha));
+      } finally {
+        scanRunning = false;
+      }
+    }
+
+    if (req.method === 'GET' && url.pathname === '/cluster/latest') {
+      const latest = store.latestClusterReport();
+      return sendJson(res, 200, latest ? clusterSummary(latest.report, latest.sha256) : { scan_id: null });
+    }
+
+    const clusterMatch = url.pathname.match(/^\/cluster\/reports\/([^/]+)$/);
+    if (req.method === 'GET' && clusterMatch) {
+      const data = store.readClusterReport(clusterMatch[1]);
+      if (!data) throw new HttpError(404, 'Cluster report not found');
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': data.length, 'Cache-Control': 'no-store' });
+      return res.end(data);
     }
 
     const reportMatch = url.pathname.match(/^\/reports\/([^/]+)$/);

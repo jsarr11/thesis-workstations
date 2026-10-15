@@ -150,3 +150,12 @@ To-Do: Κλείσιμο του DevOps Κομματιού
 ☑ Κανένα workstation δεν εξαφανίζεται από τη λίστα του χρήστη
 ☑ Πολλά workstations ανοιχτά ταυτόχρονα (--server-base-path ανά Pod): υλοποιήθηκε, μένει η δοκιμή στο VM
 ☐ Push (από εμένα) και δοκιμή στο VM (08-workflow, Step 24.3)
+
+
+Ενημέρωση 15/10/2026: Ολοκλήρωση του A.8.9 (08-workflow, Step 25)
+☑ Namespace "workstations" με Pod Security Admission (enforce baseline)
+☑ Επανεξέταση του cluster με kube-bench (εκκίνηση, καθημερινά, κουμπί), cluster-logs και ενότητα στο workspace-logs
+☐ Πριν από το push: τερματισμός όλων των workstations που τρέχουν
+☐ Push (από εμένα) και δοκιμή στο VM (08-workflow, Step 25.4), μαζί με τη δοκιμή του Step 24.3
+☐ Όταν υλοποιηθούν οι A.8.28 και A.8.2: enforce: restricted στο namespace workstations
+☐ A.8.3: δικός ServiceAccount για το Compliance Engine (αντί για το kubeconfig του VM)

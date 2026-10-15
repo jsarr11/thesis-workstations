@@ -111,6 +111,7 @@ All profiles inherit from `workstation-base:v1` (OpenVSCode Server, non-root `US
 │   └── examples/sample-report.json
 ├── deploy.sh                      # pull → npm ci → pm2 restart → build/import missing images → health check
 ├── deploy/runner-sudoers          # least-privilege sudo rule for the CI runner (docker + k3s only)
+├── deploy/k8s/workstations-namespace.yaml # namespace of the workstations with Pod Security Admission (baseline)
 ├── database/
 │   ├── docker-compose.yml         # PostgreSQL 15 (credentials from database/.env)
 │   ├── migrations/                # versioned schema changes, applied by the Manager on startup
@@ -187,6 +188,9 @@ All endpoints except `/api/health` and `/api/auth/login` require a session cooki
 | `POST` | `/api/workstations/request` | user | Request a workstation `{ profile_id }` (admin: auto-approved) |
 | `GET` | `/api/my/workstations` | user | The caller's workstations (with tokenized link when running) |
 | `DELETE` | `/api/workstations/:id` | owner / admin | Terminate a workstation (Pod + Service + Secret) or cancel a waiting request |
+| `POST` | `/api/cluster-scans` | admin | Run the cluster review now (kube-bench + Pod Security Admission, via the Compliance Engine) |
+| `GET` | `/api/cluster-scans/latest` | admin | Latest cluster review (when, who, PASS/FAIL/WARN, PSA) |
+| `GET` | `/api/cluster-scans/:id/report` | admin | Download a cluster review (`cluster-logs-<date>.json`, SHA-256 verified) |
 | `GET` | `/api/workstations/:id/compliance-report` | admin | Download the Compliance Engine report (`workspace-logs-<pod>.json`, SHA-256 verified), also for terminated workstations |
 | `GET` | `/api/approvals`, `/api/approvals/count` | admin | Requests waiting for approval |
 | `POST` | `/api/workstations/:id/approve` | admin | Approve and start provisioning |
@@ -234,6 +238,7 @@ Configuration (`manager/.env`): `SESSION_TTL_HOURS` (default `10`), `REPORT_TIME
 - [ ] **Phase 2 — compliance engine** — built as a standalone, portable tool in [`compliance-engine/`](compliance-engine/about.md) (API, admission webhook, CLI, own UI); the platform only calls it before deploying
   - [x] Engine API (`/evaluate`), evidence store (per-workstation report with SHA-256, daily decision log), platform integration (fail-closed), downloadable report
   - [x] Rule A.8.9 Configuration management (CIS Kubernetes 5.2.3–5.2.6, 5.2.12, 5.2.13), switchable per profile
+  - [x] A.8.9 second line of defence and review: dedicated `workstations` namespace with Pod Security Admission (`enforce: baseline`), daily / on-deploy / on-demand cluster review with kube-bench (`cluster-logs`, also embedded in every workspace-logs)
   - [ ] Stage 1: image scanning with Trivy (0 Critical / 0 High gate)
   - [ ] Stage 2: remaining manifest rules (non-root, read-only root FS, dropped capabilities, resource limits, NetworkPolicies)
   - [ ] Stage 3: admission gate (Kyverno or OPA Gatekeeper)

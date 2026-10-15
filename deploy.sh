@@ -71,6 +71,30 @@ for i in $(seq 1 15); do
   sleep 1
 done
 
+# 3c. Namespace των workstations με Pod Security Admission (A.8.9): το k3s απορρίπτει μόνο του ό,τι παραβιάζει
+#     το επίπεδο baseline. Την πρώτη φορά τα workstations μεταφέρονται από το default στο νέο namespace.
+WS_NAMESPACE="workstations"
+kc() {
+  if [ -f "$HOME/.kube/config" ]; then KUBECONFIG="$HOME/.kube/config" kubectl "$@"; else sudo -n k3s kubectl "$@"; fi
+}
+kc apply -f "$REPO_DIR/deploy/k8s/workstations-namespace.yaml"
+CURRENT_NS="$(env_value K8S_NAMESPACE .env)"
+if [ "$CURRENT_NS" != "$WS_NAMESPACE" ]; then
+  LEFT="$({ kc get pods -n "${CURRENT_NS:-default}" -l managed-by=thesis-manager --no-headers 2>/dev/null || true; } | wc -l)"
+  if [ "$LEFT" -gt 0 ]; then
+    echo "[ERROR] Υπάρχουν ακόμα $LEFT workstation Pods στο namespace '${CURRENT_NS:-default}'."
+    echo "        Τερμάτισέ τα από το /admin (ή: kubectl delete pods,svc,secrets -l managed-by=thesis-manager -n ${CURRENT_NS:-default})"
+    echo "        και τρέξε ξανά το deploy (π.χ. Re-run στο GitHub Actions ή bash deploy.sh)."
+    exit 1
+  fi
+  if grep -q '^K8S_NAMESPACE=' .env; then
+    sed -i "s/^K8S_NAMESPACE=.*/K8S_NAMESPACE=$WS_NAMESPACE/" .env
+  else
+    echo "K8S_NAMESPACE=$WS_NAMESPACE" >> .env
+  fi
+  echo "[+] Τα workstations μεταφέρθηκαν στο namespace '$WS_NAMESPACE' (K8S_NAMESPACE στο manager/.env)"
+fi
+
 # 4. Επανεκκίνηση του Manager μέσω PM2 (ή πρώτη εκκίνηση αν δεν υπάρχει)
 if pm2 describe manager >/dev/null 2>&1; then
   pm2 restart manager --update-env

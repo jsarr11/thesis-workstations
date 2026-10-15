@@ -6,10 +6,12 @@ const crypto = require('crypto');
 const ENGINE_URL = (process.env.COMPLIANCE_ENGINE_URL || '').replace(/\/+$/, '');
 const ENGINE_API_KEY = process.env.COMPLIANCE_ENGINE_API_KEY || '';
 const TIMEOUT_MS = parseInt(process.env.COMPLIANCE_ENGINE_TIMEOUT_MS || '10000', 10);
+// Το CIS scan του cluster (kube-bench) διαρκεί πολύ περισσότερο· την πρώτη φορά κατεβαίνει και το image.
+const CLUSTER_SCAN_TIMEOUT_MS = parseInt(process.env.CLUSTER_SCAN_TIMEOUT_MS || '420000', 10);
 
 class ComplianceEngineError extends Error {}
 
-async function request(path, options = {}) {
+async function request(path, { timeoutMs = TIMEOUT_MS, ...options } = {}) {
   if (!ENGINE_URL || !ENGINE_API_KEY) {
     throw new ComplianceEngineError('Compliance Engine is not configured (COMPLIANCE_ENGINE_URL / COMPLIANCE_ENGINE_API_KEY)');
   }
@@ -18,7 +20,7 @@ async function request(path, options = {}) {
     res = await fetch(`${ENGINE_URL}${path}`, {
       ...options,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ENGINE_API_KEY}` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
     throw new ComplianceEngineError(`Compliance Engine unavailable: ${err.cause ? err.cause.message || err.cause.code : err.message}`);
@@ -36,9 +38,9 @@ async function evaluate(payload) {
   return res.json();
 }
 
-// Επιστρέφει τα bytes του report αφού ελέγξει ότι ταιριάζουν με το SHA-256 που κρατά η πλατφόρμα.
-async function fetchReport(reportId, expectedSha256) {
-  const res = await request(`/reports/${encodeURIComponent(reportId)}`);
+// Επιστρέφει τα bytes ενός αποθηκευμένου αρχείου αφού ελέγξει ότι ταιριάζουν με το SHA-256 που κρατά η πλατφόρμα.
+async function fetchVerified(path, expectedSha256) {
+  const res = await request(path);
   const data = Buffer.from(await res.arrayBuffer());
   const actual = crypto.createHash('sha256').update(data).digest('hex');
   if (actual !== expectedSha256) {
@@ -47,4 +49,20 @@ async function fetchReport(reportId, expectedSha256) {
   return data;
 }
 
-module.exports = { evaluate, fetchReport, ComplianceEngineError };
+// workspace-logs ενός workstation
+const fetchReport = (reportId, expectedSha256) => fetchVerified(`/reports/${encodeURIComponent(reportId)}`, expectedSha256);
+
+// Επανεξέταση του cluster (kube-bench + Pod Security Admission) → { scan_id, report_sha256, status, trigger, generated_at, summary, error? }
+async function clusterScan({ trigger, requestedBy = null }) {
+  const res = await request('/cluster/scan', {
+    method: 'POST',
+    body: JSON.stringify({ trigger, requested_by: requestedBy }),
+    timeoutMs: CLUSTER_SCAN_TIMEOUT_MS,
+  });
+  return res.json();
+}
+
+// cluster-logs ενός scan
+const fetchClusterReport = (scanId, expectedSha256) => fetchVerified(`/cluster/reports/${encodeURIComponent(scanId)}`, expectedSha256);
+
+module.exports = { evaluate, fetchReport, clusterScan, fetchClusterReport, ComplianceEngineError };

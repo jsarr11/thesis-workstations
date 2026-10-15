@@ -9,6 +9,8 @@ const { runMigrations } = require('./migrate');
 const workstations = require('./workstations');
 // Client του Compliance Engine (ξεχωριστή υπηρεσία)
 const compliance = require('./compliance');
+// Επανεξέταση του cluster (A.8.9): πότε τρέχει το CIS scan του Compliance Engine
+const clusterScans = require('./cluster-scans');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -210,6 +212,43 @@ app.post('/api/workstations/:id/reject', requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
+// ---------- Επανεξέταση του cluster (CIS scan με kube-bench, A.8.9) ----------
+
+// Κατ' απαίτηση (κουμπί "Έλεγχος cluster τώρα"): περιμένει το αποτέλεσμα (έως μερικά λεπτά)
+app.post('/api/cluster-scans', requireAdmin, async (req, res) => {
+  try {
+    const result = await clusterScans.runClusterScan({ trigger: 'MANUAL', actor: req.user });
+    res.json({ success: true, scan: result });
+  } catch (err) {
+    if (err instanceof compliance.ComplianceEngineError) return res.status(502).json({ error: err.message });
+    throw err;
+  }
+});
+
+app.get('/api/cluster-scans/latest', requireAdmin, async (req, res) => {
+  res.json(await clusterScans.latestScan());
+});
+
+// cluster-logs: το αποτέλεσμα ενός scan, με έλεγχο ακεραιότητας (SHA-256)
+app.get('/api/cluster-scans/:id/report', requireAdmin, async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(404).json({ error: 'Cluster report not found' });
+  const scan = await clusterScans.getScan(req.params.id);
+  if (!scan) return res.status(404).json({ error: 'Cluster report not found' });
+  let data;
+  try {
+    data = await compliance.fetchClusterReport(scan.scan_id, scan.report_sha256.trim());
+  } catch (err) {
+    if (!(err instanceof compliance.ComplianceEngineError)) throw err;
+    await auditEvent('CLUSTER', 'REPORT-DOWNLOAD', 'FAILED', { scan_id: scan.scan_id, error: err.message }, req.user.id);
+    return res.status(502).json({ error: err.message });
+  }
+  await auditEvent('CLUSTER', 'REPORT-DOWNLOAD', 'SUCCESS', { scan_id: scan.scan_id }, req.user.id);
+  const stamp = new Date(scan.created_at).toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
+  res.setHeader('Content-Disposition', `attachment; filename="cluster-logs-${stamp}.json"`);
+  res.setHeader('X-Report-SHA256', scan.report_sha256.trim());
+  res.type('application/json; charset=utf-8').send(data);
+});
+
 // Πολιτικές ασφαλείας (checklist)
 app.get('/api/policies', requireAdmin, async (req, res) => {
   const result = await pool.query(`
@@ -408,6 +447,7 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`[SERVER] Manager API & Frontend UI running on port ${PORT}`);
     workstations.startSessionSweeper([auth.deleteExpiredSessions]);
+    clusterScans.startClusterScanScheduler();
   });
 }
 

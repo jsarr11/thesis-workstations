@@ -151,3 +151,32 @@ Tier 1
 
 Σημείωση (15/10/2026, 08-workflow Step 24)
 Το compliance report (workspace-logs) είναι πλέον μόνο για τον admin: το κατεβάζει από την καρτέλα Workstations ή από το Audit Trail (γραμμή DEPLOY ή COMPLIANCE-GATE), και μετά τον τερματισμό του workstation. Ο developer δεν βλέπει το report. Στο Policy Checklist ο A.8.9 εμφανίζεται σε ξεχωριστό υπο-tab για κάθε profile.
+
+
+
+
+Ολοκλήρωση του A.8.9: Pod Security Admission και επανεξέταση με kube-bench (15/10/2026, 08-workflow Step 25)
+
+Κάλυψη των 5 απαιτήσεων του ISO (μετά το Step 25)
+    ορίζονται        → CIS Kubernetes Benchmark v1.8, §5.2 (module του κανόνα) και CIS benchmark του k3s (kube-bench)        ✅
+    τεκμηριώνονται   → Policy Checklist ανά profile, κατάλογος κανόνων στο report, integration guide, SoA (στο τέλος)      ✅
+    εφαρμόζονται     → Compliance Engine (διόρθωση στο Stage 2, fail-closed) + Pod Security Admission (enforce: baseline)   ✅
+    παρακολουθούνται → workspace-logs ανά workstation, log αποφάσεων, Audit Trail                                         ✅
+    επανεξετάζονται  → kube-bench: καθημερινά, σε κάθε deploy και κατ' απαίτηση (κουμπί), cluster-logs                    ✅
+
+Δύο γραμμές άμυνας
+    1η: Compliance Engine. Διορθώνει το manifest πριν από το deploy (hostPID/IPC/Network, allowPrivilegeEscalation) ή το μπλοκάρει (hostPath, hostPort).
+    2η: Pod Security Admission στο namespace "workstations" (enforce: baseline). Το ίδιο το k3s απορρίπτει hostPID, hostIPC, hostNetwork, privileged, hostPath και hostPort, ακόμα κι αν κάποιος παρακάμψει την πλατφόρμα (kubectl apply).
+    Γιατί baseline και όχι restricted: το restricted απαιτεί και τους κανόνες A.8.28 (non-root) και A.8.2 (capabilities), που δεν έχουν υλοποιηθεί. Με warn/audit: restricted φαίνεται ήδη τι λείπει. Όταν υλοποιηθούν, το enforce γίνεται restricted.
+    Το allowPrivilegeEscalation (CIS 5.2.6) ανήκει στο restricted, άρα σήμερα το επιβάλλει μόνο η 1η γραμμή.
+
+Επανεξέταση (kube-bench)
+    Εργαλείο: aquasec/kube-bench v0.15.6, αναγνωρίζει μόνο του το k3s (benchmark k3s-cis-1.x).
+    Πότε: σε κάθε εκκίνηση του Manager (deploy), κάθε 24 ώρες, και με το κουμπί "▶ Έλεγχος cluster (CIS) τώρα".
+    Το κουμπί: έλεγχος κατ' απαίτηση (μετά από αλλαγή/ενημέρωση του k3s ή πριν από audit). Δεν το απαιτεί το ISO. Το ISO ζητά επανεξέταση χωρίς να ορίζει τρόπο ή συχνότητα. Η συχνότητα (καθημερινά) είναι απόφαση του οργανισμού και μπαίνει στη SoA.
+    Αποδεικτικά: γραμμή CLUSTER / CIS-SCAN στο Audit Trail με "📄 cluster-logs", και ενότητα cluster_review σε κάθε workspace-logs.
+
+Γνωστό ρίσκο
+    Το Compliance Engine τρέχει το kube-bench με το kubeconfig του VM (πλήρη δικαιώματα). Λύνεται με τον A.8.3 (ServiceAccount με ελάχιστα δικαιώματα).
+
+Κατάσταση: ο A.8.9 καλύπτεται πλήρως. Μένει η δοκιμή στο VM (08-workflow, Step 25.4).
