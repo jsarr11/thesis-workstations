@@ -10,6 +10,9 @@ jobs:
     runs-on: self-hosted
     steps:
       - name: Run local deployment script
+        # Πρώτα git pull, ώστε να εκτελείται πάντα η νέα έκδοση του deploy.sh
+        # (αλλιώς το bash τρέχει την παλιά, που είχε ήδη ανοίξει πριν από το pull μέσα στο script)
         run: |
           cd ~/thesis-workstations
+          git pull --ff-only origin main
           bash deploy.sh
