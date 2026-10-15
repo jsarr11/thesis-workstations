@@ -73,7 +73,7 @@ Login ─► Request ─► WAITING_APPROVAL ─► Admin: Accept ─► Provisi
                            check + auto-remediation)
 ```
 
-Each stage logs its progress (`[LOG] Step N: …`) and writes to the audit trail. In Stage 2 the baseline manifest is sent to the standalone [Compliance Engine](compliance-engine/about.md) with the rules the admin has switched ON for the profile; the remediated manifest is deployed, a non-remediable violation blocks the deployment, and if the engine is unreachable nothing is deployed (fail-closed). The engine's compliance report (integrity-checked with SHA-256) is downloadable next to the VS Code link (**📄 workspace-logs**). Stages 1 and 3 are still placeholders.
+Each stage logs its progress (`[LOG] Step N: …`) and writes to the audit trail. In Stage 2 the baseline manifest is sent to the standalone [Compliance Engine](compliance-engine/about.md) with the rules the admin has switched ON for the profile; the remediated manifest is deployed, a non-remediable violation blocks the deployment, and if the engine is unreachable nothing is deployed (fail-closed). The engine's compliance report (integrity-checked with SHA-256) is downloadable by admins as **📄 workspace-logs** from the Workstations tab and from the Audit Trail (also after the workstation is terminated). Stages 1 and 3 are still placeholders.
 
 ## Tech stack
 
@@ -187,7 +187,7 @@ All endpoints except `/api/health` and `/api/auth/login` require a session cooki
 | `POST` | `/api/workstations/request` | user | Request a workstation `{ profile_id }` (admin: auto-approved) |
 | `GET` | `/api/my/workstations` | user | The caller's workstations (with tokenized link when running) |
 | `DELETE` | `/api/workstations/:id` | owner / admin | Terminate a workstation (Pod + Service + Secret) or cancel a waiting request |
-| `GET` | `/api/workstations/:id/compliance-report` | owner / admin | Download the Compliance Engine report (`workspace-logs-<pod>.json`, SHA-256 verified) |
+| `GET` | `/api/workstations/:id/compliance-report` | admin | Download the Compliance Engine report (`workspace-logs-<pod>.json`, SHA-256 verified), also for terminated workstations |
 | `GET` | `/api/approvals`, `/api/approvals/count` | admin | Requests waiting for approval |
 | `POST` | `/api/workstations/:id/approve` | admin | Approve and start provisioning |
 | `POST` | `/api/workstations/:id/reject` | admin | Reject `{ note }` |

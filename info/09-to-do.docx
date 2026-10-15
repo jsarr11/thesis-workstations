@@ -134,3 +134,19 @@ To-Do: Κλείσιμο του DevOps Κομματιού
 ☐ Backup των αποδεικτικών του Compliance Engine (compliance-engine/data/) στο backup.sh
 ☐ Διόρθωση: το backup.sh κατεβάζει τα audit logs χωρίς σύνδεση, ενώ το endpoint θέλει admin από το Step 13 (08-workflow, Step 20.5)
 ☐ Ανάλυση και υλοποίηση του επόμενου κανόνα: A.8.28
+
+
+Ενημέρωση 15/10/2026 12:56
+☑ Merge στο main και push (από εμένα), deploy επιτυχές
+☑ Δοκιμή του A.8.9 στο VM με τον κανόνα ON και OFF (08-workflow, Step 23)
+☐ Screenshots της δοκιμής στο 08-workflow (Step 23)
+☐ Γνωστός περιορισμός: με δύο workstations ανοιχτά στον ίδιο browser, το refresh δίνει "Forbidden" (κοινό cookie token ανά IP). Λύση με Ingress και hostname ανά workstation (A.8.24)
+☐ Reboot του VM για τις ενημερώσεις ασφαλείας ("System restart required", 70 updates), σε ώρα που δεν τρέχουν workstations
+
+
+Ενημέρωση 15/10/2026: Βελτιώσεις UI (08-workflow, Step 24)
+☑ workspace-logs μόνο για admin, και από το Audit Trail (και για τερματισμένα workstations)
+☑ Policy Checklist σε υπο-tabs ανά profile
+☑ Κανένα workstation δεν εξαφανίζεται από τη λίστα του χρήστη
+☑ Πολλά workstations ανοιχτά ταυτόχρονα (--server-base-path ανά Pod): υλοποιήθηκε, μένει η δοκιμή στο VM
+☐ Push (από εμένα) και δοκιμή στο VM (08-workflow, Step 24.3)

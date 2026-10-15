@@ -54,6 +54,9 @@ function describeK8sError(err) {
 
 const secretNameFor = (podName) => `${podName}-token`;
 
+// Το path του VS Code μέσα στο workstation (π.χ. /workstation-maria-0042)
+const basePathFor = (podName) => `/${podName}`;
+
 function buildManifests(podName, imageTag) {
   const labels = { app: podName, 'managed-by': 'thesis-manager' };
 
@@ -69,8 +72,10 @@ function buildManifests(podName, imageTag) {
         image: imageTag,
         imagePullPolicy: 'Never', // Τα images γίνονται import απευθείας στο containerd του k3s
         // Το upstream image ξεκινά με --without-connection-token· το αντικαθιστούμε ώστε να απαιτείται token.
+        // --server-base-path: κάθε workstation σε δικό του path, ώστε το cookie του token (χωρίς Path) να δένεται
+        // σε αυτό και να μη συγκρούεται με άλλα workstations στην ίδια IP (διαφορετικά NodePorts, ίδια cookies).
         command: ['/bin/sh', '-c'],
-        args: [`exec "\${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server" --host 0.0.0.0 --port 3000 --connection-token-file ${TOKEN_MOUNT_DIR}/token`],
+        args: [`exec "\${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server" --host 0.0.0.0 --port 3000 --connection-token-file ${TOKEN_MOUNT_DIR}/token --server-base-path ${basePathFor(podName)}`],
         ports: [{ containerPort: 3000 }],
         volumeMounts: [{ name: 'workstation-token', mountPath: TOKEN_MOUNT_DIR, readOnly: true }],
       }],
@@ -390,7 +395,7 @@ async function deployWorkstation(workstationId, publicHost) {
     console.log(`[LOG] Step 5: Waiting for Pod readiness (timeout ${READY_TIMEOUT_MS / 1000}s)`);
     const pod = await waitForPodReady(podName);
 
-    const access_url = `http://${publicHost}:${nodePort}/?folder=/home/workspace`;
+    const access_url = `http://${publicHost}:${nodePort}${basePathFor(podName)}/?folder=/home/workspace`;
     await setStatus(workstationId, 'RUNNING', { pod_ip: pod.status.podIP, access_url });
     await audit(workstationId, 'PROVISIONING', 'DEPLOY', 'SUCCESS', {
       message: 'Workstation deployed to k3s with the manifest returned by the Compliance Engine (connection token required)',

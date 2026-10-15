@@ -153,8 +153,8 @@ app.get('/api/my/workstations', requireAuth, async (req, res) => {
 });
 
 // Compliance report (workspace-logs): το επίσημο report του Compliance Engine, με έλεγχο ακεραιότητας (SHA-256).
-// Ο κάτοχος για τα δικά του, ο admin για όλα.
-app.get('/api/workstations/:id/compliance-report', requireAuth, async (req, res) => {
+// Μόνο για τον admin (αποδεικτικό για τον auditor). Διαθέσιμο και μετά τον τερματισμό του workstation.
+app.get('/api/workstations/:id/compliance-report', requireAdmin, async (req, res) => {
   if (!isUuid(req.params.id)) return res.status(404).json({ error: 'Compliance report not found' });
   const ref = await workstations.getComplianceReportRef(req.params.id, req.user);
   let data;
@@ -309,10 +309,12 @@ app.post('/api/users/:id/reset-password', requireAdmin, async (req, res) => {
 
 app.get('/api/audit-logs', requireAdmin, async (req, res) => {
   const result = await pool.query(`
-    SELECT al.*, wr.username, wr.pod_name, a.email AS actor_email
+    SELECT al.*, wr.username, wr.pod_name, a.email AS actor_email,
+           cr.report_id IS NOT NULL AS has_compliance_report
     FROM audit_logs al
     LEFT JOIN workstation_requests wr ON al.workstation_id = wr.id
     LEFT JOIN users a ON a.id = al.actor_user_id
+    LEFT JOIN compliance_reports cr ON cr.workstation_id = al.workstation_id
     ORDER BY al.timestamp DESC
     LIMIT 1000
   `);

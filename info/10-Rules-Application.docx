@@ -142,3 +142,12 @@ Tier 1
     Πριν (κανόνας OFF):  CIS 5.2.6 VIOLATION_NOT_ENFORCED, sudo whoami → root
     Μετά (κανόνας ON):   CIS 5.2.6 REMEDIATED, sudo → απορρίπτεται ("no new privileges")
     Δείγμα report: compliance-engine/examples/sample-report.json
+
+
+Δοκιμή του A.8.9 στο VM (15/10/2026 12:56, 08-workflow Step 23): ΕΠΙΤΥΧΗΣ
+    Κανόνας ON:   sudo whoami → "The \"no new privileges\" flag is set, which prevents sudo from running as root."   report: REMEDIATED
+    Κανόνας OFF:  sudo whoami → root                                                                          report: VIOLATION_NOT_ENFORCED
+
+
+Σημείωση (15/10/2026, 08-workflow Step 24)
+Το compliance report (workspace-logs) είναι πλέον μόνο για τον admin: το κατεβάζει από την καρτέλα Workstations ή από το Audit Trail (γραμμή DEPLOY ή COMPLIANCE-GATE), και μετά τον τερματισμό του workstation. Ο developer δεν βλέπει το report. Στο Policy Checklist ο A.8.9 εμφανίζεται σε ξεχωριστό υπο-tab για κάθε profile.
