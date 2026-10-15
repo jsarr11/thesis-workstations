@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const pool = require('./db');
 const { k8sCoreApi, k8sNamespace } = require('./k8s');
+const compliance = require('./compliance');
 
 const READY_TIMEOUT_MS = parseInt(process.env.POD_READY_TIMEOUT_MS || '120000', 10);
 const POLL_INTERVAL_MS = 2000;
@@ -56,7 +57,7 @@ const secretNameFor = (podName) => `${podName}-token`;
 function buildManifests(podName, imageTag) {
   const labels = { app: podName, 'managed-by': 'thesis-manager' };
 
-  // Baseline ("γυμνό") manifest — χωρίς hardening. Η Φάση 2 θα το διορθώνει (auto-remediation).
+  // Baseline ("γυμνό") manifest — χωρίς hardening. Το διορθώνει το Compliance Engine (Stage 2) πριν από το deploy.
   const podManifest = {
     apiVersion: 'v1',
     kind: 'Pod',
@@ -173,11 +174,13 @@ const WORKSTATION_SELECT = `
   SELECT wr.*, p.display_name AS profile_name,
          u.email AS owner_email, u.full_name AS owner_name,
          r.email AS reviewer_email,
-         (wr.started_at + make_interval(secs => $1)) AT TIME ZONE current_setting('TimeZone') AS expires_at
+         (wr.started_at + make_interval(secs => $1)) AT TIME ZONE current_setting('TimeZone') AS expires_at,
+         cr.report_id IS NOT NULL AS has_compliance_report, cr.decision AS compliance_decision
     FROM workstation_requests wr
     JOIN profiles p ON p.id = wr.profile_id
     LEFT JOIN users u ON u.id = wr.user_id
-    LEFT JOIN users r ON r.id = wr.reviewed_by`;
+    LEFT JOIN users r ON r.id = wr.reviewed_by
+    LEFT JOIN compliance_reports cr ON cr.workstation_id = wr.id`;
 
 async function getWorkstation(workstationId) {
   const result = await pool.query(`${WORKSTATION_SELECT} WHERE wr.id = $2`, [SESSION_TTL_SECONDS, workstationId]);
@@ -284,27 +287,96 @@ async function rejectRequest(workstationId, reviewer, note) {
   console.log(`[LOG] Request ${updated.rows[0].pod_name} rejected by ${reviewer.email}`);
 }
 
+// ---------- Compliance Engine (Stage 2) ----------
+// Στέλνει το manifest και τους κανόνες του profile (ON/OFF από το Policy Checklist) στο Compliance Engine.
+// Το report το κρατά το εργαλείο· η πλατφόρμα αποθηκεύει μόνο το ID και το SHA-256 του.
+const isoDate = (d) => (d ? new Date(d).toISOString() : null);
+
+async function evaluateCompliance(ws, podManifest) {
+  const rules = await pool.query(
+    `SELECT pr.rule_key, pr.is_enabled, pr.updated_at, u.email AS updated_by_email
+       FROM policy_rules pr LEFT JOIN users u ON u.id = pr.updated_by
+      WHERE pr.profile_id = $1 ORDER BY pr.id`,
+    [ws.profile_id]
+  );
+
+  const result = await compliance.evaluate({
+    manifest: podManifest,
+    rules: rules.rows.map((r) => ({
+      id: r.rule_key,
+      enabled: r.is_enabled === true,
+      changed_by: r.updated_by_email || null,
+      changed_at: isoDate(r.updated_at),
+    })),
+    context: {
+      platform: 'thesis-workstations',
+      workstation_id: ws.id,
+      pod_name: ws.pod_name,
+      namespace: k8sNamespace,
+      profile: ws.profile_name,
+      image: ws.image_tag,
+      owner: ws.owner_email,
+      requested_at: isoDate(ws.created_at),
+      approved_by: ws.reviewer_email,
+      approved_at: isoDate(ws.reviewed_at),
+    },
+  });
+
+  await pool.query(
+    `INSERT INTO compliance_reports (workstation_id, report_id, report_sha256, decision, summary)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (workstation_id) DO UPDATE
+       SET report_id = EXCLUDED.report_id, report_sha256 = EXCLUDED.report_sha256,
+           decision = EXCLUDED.decision, summary = EXCLUDED.summary, created_at = NOW()`,
+    [ws.id, result.report_id, result.report_sha256, result.decision, JSON.stringify(result.summary)]
+  );
+  for (const r of result.rules) {
+    await audit(ws.id, 'COMPLIANCE', r.rule, r.outcome, { enabled: r.enabled, report_id: result.report_id });
+    console.log(`[LOG]   ${r.rule}: ${r.enabled ? 'ON' : 'OFF'} → ${r.outcome}`);
+  }
+  return result;
+}
+
 // ---------- Deploy (μετά την έγκριση) ----------
-// Στη Φάση 2 τα Steps 1 και 3 θα γίνουν πραγματικοί έλεγχοι.
+// Τα Steps 1 και 3 θα γίνουν πραγματικοί έλεγχοι σε επόμενους κανόνες του Compliance Engine.
 async function deployWorkstation(workstationId, publicHost) {
   const res = await pool.query(
-    `SELECT wr.id, wr.pod_name, p.image_tag
-       FROM workstation_requests wr JOIN profiles p ON p.id = wr.profile_id
+    `SELECT wr.id, wr.pod_name, wr.profile_id, wr.created_at, wr.reviewed_at,
+            p.image_tag, p.name AS profile_name, u.email AS owner_email, r.email AS reviewer_email
+       FROM workstation_requests wr
+       JOIN profiles p ON p.id = wr.profile_id
+       LEFT JOIN users u ON u.id = wr.user_id
+       LEFT JOIN users r ON r.id = wr.reviewed_by
       WHERE wr.id = $1 AND wr.status = 'PENDING'`,
     [workstationId]
   );
   if (res.rows.length === 0) return;
-  const { pod_name: podName, image_tag: imageTag } = res.rows[0];
+  const ws = res.rows[0];
+  const { pod_name: podName, image_tag: imageTag } = ws;
   let k8sObjectsCreated = false;
 
   try {
-    console.log(`[LOG] Step 1: Image Validation (${imageTag}) — skipped in Phase 1`);
+    console.log(`[LOG] Step 1: Image Validation (${imageTag}) — not implemented yet`);
 
-    console.log('[LOG] Step 2: Manifest Generation (baseline, un-hardened + connection token)');
+    console.log('[LOG] Step 2: Manifest Generation (baseline + connection token) → Compliance Engine');
     const token = crypto.randomBytes(24).toString('base64url');
-    const { podManifest, serviceManifest } = buildManifests(podName, imageTag);
+    const baseline = buildManifests(podName, imageTag);
+    const evaluation = await evaluateCompliance(ws, baseline.podManifest);
+    if (!evaluation.compliant) {
+      // Παράβαση που δεν διορθώνεται αυτόματα: δεν δημιουργείται τίποτα στο k3s.
+      await setStatus(workstationId, 'FAILED');
+      await audit(workstationId, 'COMPLIANCE', 'COMPLIANCE-GATE', 'DENIED', {
+        report_id: evaluation.report_id,
+        summary: evaluation.summary,
+      });
+      console.log(`[LOG] Workstation ${podName} denied by the Compliance Engine (report ${evaluation.report_id})`);
+      return;
+    }
+    const podManifest = evaluation.manifest;
+    const { serviceManifest } = baseline;
+    console.log(`[LOG] Step 2: ${evaluation.decision} — remediated ${evaluation.summary.remediated} check(s), report ${evaluation.report_id}`);
 
-    console.log('[LOG] Step 3: Admission Gate — skipped in Phase 1');
+    console.log('[LOG] Step 3: Admission Gate — not implemented yet');
 
     console.log(`[LOG] Step 4: Deploy Secret, Pod & Service ${podName} -> namespace ${k8sNamespace}`);
     await setStatus(workstationId, 'DEPLOYING');
@@ -320,8 +392,9 @@ async function deployWorkstation(workstationId, publicHost) {
 
     const access_url = `http://${publicHost}:${nodePort}/?folder=/home/workspace`;
     await setStatus(workstationId, 'RUNNING', { pod_ip: pod.status.podIP, access_url });
-    await audit(workstationId, 'PROVISIONING', 'BASELINE-DEPLOY', 'SUCCESS', {
-      message: 'Unhardened workstation deployed to k3s (connection token required)',
+    await audit(workstationId, 'PROVISIONING', 'DEPLOY', 'SUCCESS', {
+      message: 'Workstation deployed to k3s with the manifest returned by the Compliance Engine (connection token required)',
+      compliance_report_id: evaluation.report_id,
       image: imageTag,
       nodePort,
       podIP: pod.status.podIP,
@@ -335,8 +408,26 @@ async function deployWorkstation(workstationId, publicHost) {
       await deleteK8sResources(podName).catch((e) => console.error('[ERROR] Cleanup failed:', describeK8sError(e)));
     }
     await setStatus(workstationId, 'FAILED');
-    await audit(workstationId, 'PROVISIONING', 'BASELINE-DEPLOY', 'FAILED', { error: reason });
+    if (err instanceof compliance.ComplianceEngineError) {
+      // Fail-closed: χωρίς έλεγχο συμμόρφωσης δεν γίνεται deploy
+      await audit(workstationId, 'COMPLIANCE', 'COMPLIANCE-ENGINE', 'FAILED', { error: reason });
+    } else {
+      await audit(workstationId, 'PROVISIONING', 'DEPLOY', 'FAILED', { error: reason });
+    }
   }
+}
+
+// Παραπομπή στο compliance report ενός workstation (μόνο για τον κάτοχο και τον admin).
+async function getComplianceReportRef(workstationId, viewer) {
+  const res = await pool.query(
+    `SELECT cr.report_id, cr.report_sha256, wr.pod_name, wr.user_id
+       FROM compliance_reports cr JOIN workstation_requests wr ON wr.id = cr.workstation_id
+      WHERE cr.workstation_id = $1`,
+    [workstationId]
+  );
+  const ref = res.rows[0];
+  if (!ref || (viewer.role !== 'admin' && ref.user_id !== viewer.id)) throw new HttpError(404, 'Compliance report not found');
+  return ref;
 }
 
 // ---------- Τερματισμός / λήξη ----------
@@ -468,6 +559,7 @@ module.exports = {
   listPendingApprovals,
   countPendingApprovals,
   toApiWorkstation,
+  getComplianceReportRef,
   reconcileWithCluster,
   expireSessions,
   startSessionSweeper,

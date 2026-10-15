@@ -314,13 +314,16 @@ bash deploy.sh
 ```
 Τι κάνει, με τη σειρά:
 1. `git pull` και `npm ci`, δηλαδή εγκατάσταση των βιβλιοθηκών του Manager
-2. ξεκινά τον Manager με PM2 (`manager`)
-3. **χτίζει** τα 4 images (base, developer, data-analyst, devops). Αυτό διαρκεί **15–30 λεπτά** την πρώτη φορά.
-4. τα **εισάγει** στο k3s
-5. ελέγχει ότι ο Manager απαντά (health check)
+2. ξεκινά το **Compliance Engine** με PM2 (`compliance-engine`). Την πρώτη φορά δημιουργεί το `compliance-engine/.env` με τυχαίο API key και προσθέτει τη σύνδεση (`COMPLIANCE_ENGINE_URL`, `COMPLIANCE_ENGINE_API_KEY`) στο `manager/.env`
+3. ξεκινά τον Manager με PM2 (`manager`)
+4. **χτίζει** τα 4 images (base, developer, data-analyst, devops). Αυτό διαρκεί **15–30 λεπτά** την πρώτη φορά.
+5. τα **εισάγει** στο k3s
+6. ελέγχει ότι ο Manager απαντά (health check)
 
 Στο τέλος πρέπει να δεις:
 ```
+[+] Compliance Engine health check OK (port 5100)
+...
 [+] Manager health check OK (port 5000)
 === [CD] Deployment Completed Successfully! ===
 ```
@@ -337,7 +340,8 @@ systemctl is-enabled pm2-$USER          # πρέπει: enabled
 
 ### 9.2 Έλεγχος
 ```bash
-pm2 status                                                 # manager: online
+pm2 status                                                 # manager & compliance-engine: online
+curl -s http://localhost:5100/health                       # {"status":"UP",...,"rules":["A.8.9"]}
 curl -s http://localhost:5000/api/health                   # {"status":"UP",...}
 sudo k3s ctr -n k8s.io images ls -q | grep workstation     # 3 images
 df -h /                                                    # κάτω από 80%
@@ -473,6 +477,8 @@ pm2 logs manager                # τα logs του Manager ([LOG] Step 1..5); Ct
 | Το portal ζητά login αλλά δεν υπάρχει λογαριασμός | δεν δημιουργήθηκε ο πρώτος admin | [§9.3](#93-πρώτος-λογαριασμός-admin) |
 | «Πολλές αποτυχημένες προσπάθειες» στο login | 5 λάθος κωδικοί σε 15 λεπτά (προστασία από brute-force) | περίμενε 15 λεπτά ή `pm2 restart manager` |
 | Ο Manager δεν ξεκινά: `Database migrations failed` | σφάλμα στο σχήμα της βάσης | `pm2 logs manager` για τη λεπτομέρεια. Τα migrations βρίσκονται στο `database/migrations/` |
+| Κάθε νέο workstation βγαίνει «⚠️ Απέτυχε» και στο Audit Trail υπάρχει `COMPLIANCE-ENGINE` / `FAILED` | το Compliance Engine δεν τρέχει ή το API key διαφέρει (fail-closed: χωρίς έλεγχο δεν γίνεται deploy) | `pm2 status`, `pm2 logs compliance-engine`, `curl -s http://localhost:5100/health`. Το `COMPLIANCE_ENGINE_API_KEY` του `manager/.env` πρέπει να είναι ίδιο με το `API_KEY` του `compliance-engine/.env`· μετά `bash deploy.sh` |
+| Workstation «⚠️ Απέτυχε» με «Μπλοκαρίστηκε από τον έλεγχο συμμόρφωσης» | παράβαση που δεν διορθώνεται αυτόματα (π.χ. hostPath) | κατέβασε το 📄 workspace-logs: γράφει ποιος έλεγχος (CIS) απέτυχε και γιατί |
 | Το VS Code δεν ανοίγει με το link | το link άνοιξε χωρίς το `tkn=` ή το workstation έληξε | άνοιξέ το ξανά από το portal («Τα workstations μου») |
 
 ---

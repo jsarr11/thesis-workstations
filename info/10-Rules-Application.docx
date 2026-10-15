@@ -1,0 +1,144 @@
+Εφαρμογή των Κανόνων (Rules Application)
+
+Δημιουργήθηκε: 15/10/2026 11:17
+Σκοπός: για κάθε κανόνα των Tiers 1 και 2 (βλ. 04-ISO-Rules-&-CIS-Benchmarks.docx, §11), τι λέει το ISO, τι σημαίνει στην πράξη και τι ακριβώς πρέπει να γίνει (εργαλεία και ενέργειες) για να καλυφθεί πλήρως.
+
+
+Tier 1
+
+
+
+1. A.8.9 Configuration management
+
+Τι λέει το ISO
+
+"Configurations, including security configurations, of hardware, software, services and networks shall be established, documented, implemented, monitored and reviewed." (ISO/IEC 27001:2022, Annex A.8.9)
+
+Δηλαδή, οι ρυθμίσεις (και ειδικά οι ρυθμίσεις ασφαλείας) πρέπει να:
+    1. ορίζονται (established)
+    2. τεκμηριώνονται (documented)
+    3. εφαρμόζονται (implemented)
+    4. παρακολουθούνται (monitored)
+    5. επανεξετάζονται (reviewed)
+
+Εξήγηση
+
+Στο project, οι "ρυθμίσεις" είναι το manifest κάθε Pod που σηκώνει ο Manager. Το ασφαλές πρότυπο ρυθμίσεων (baseline) είναι το CIS Kubernetes Benchmark v1.8, ενότητα 5.2 (Pod Security Standards). Το ISO δεν λέει πότε ή με ποιο εργαλείο γίνεται ο έλεγχος. Αυτό είναι σχεδιαστική απόφαση του project.
+
+Οι 13 συστάσεις της CIS 5.2 (v1.8):
+    5.2.1  Τουλάχιστον ένας ενεργός μηχανισμός policy στο cluster
+    5.2.2  Όχι privileged containers                          (privileged)
+    5.2.3  Όχι κοινό PID namespace με τον host                (hostPID)
+    5.2.4  Όχι κοινό IPC namespace με τον host                (hostIPC)
+    5.2.5  Όχι κοινό δίκτυο με τον host                       (hostNetwork)
+    5.2.6  Όχι privilege escalation                           (allowPrivilegeEscalation)
+    5.2.7  Όχι root containers                                (runAsNonRoot)
+    5.2.8  Όχι NET_RAW capability
+    5.2.9  Όχι πρόσθετα capabilities                          (capabilities.add)
+    5.2.10 Ελάχιστα capabilities                              (drop ALL)
+    5.2.11 Όχι Windows HostProcess                            (δεν αφορά το project)
+    5.2.12 Όχι HostPath volumes                               (hostPath)
+    5.2.13 Όχι HostPorts                                      (hostPort)
+
+Στο k3s και οι 13 βγαίνουν WARN από προεπιλογή, δηλαδή το k3s μόνο του δεν τις επιβάλλει. Γι' αυτό χρειάζεται ο Manager.
+
+Διαχωρισμός από άλλους κανόνες (για να μη μετρά ο ίδιος έλεγχος δύο φορές στο UI και στη SoA):
+    A.8.9  (αυτός ο κανόνας): 5.2.1, 5.2.3, 5.2.4, 5.2.5, 5.2.6, 5.2.12, 5.2.13 (απομόνωση από τον host)
+    A.8.2  (Tier 2, #11):     5.2.2, 5.2.8, 5.2.9, 5.2.10 (privileged, capabilities)
+    A.8.28 (Tier 1, #2):      5.2.7 (root, runAsUser: 1000)
+
+Ο κανόνας αυτός ΔΕΝ αφορά το build του image. Αφορά μόνο το manifest.
+
+Πώς το λύνω
+
+3 εργαλεία και 2 ενέργειες:
+
+    1. Ο Manager (Stage 2, δικός μου κώδικας)
+       Πριν από κάθε deploy διορθώνει το manifest: hostPID, hostIPC, hostNetwork → false,
+       αφαίρεση hostPath και hostPort, allowPrivilegeEscalation: false.
+
+    2. Pod Security Admission (ενσωματωμένο στο k3s, δεν εγκαθίσταται τίποτα)
+       Label στο namespace των workstations:  pod-security.kubernetes.io/enforce: restricted
+       Αν κάτι ξεφύγει από τον Manager, το k3s το απορρίπτει (δεύτερη γραμμή άμυνας, καλύπτει και το 5.2.1).
+
+    3. kube-bench (Aqua Security, δωρεάν)
+       Τρέχει περιοδικά, ελέγχει το cluster με βάση το CIS Benchmark και βγάζει report.
+
+    4. Καταγραφή στο audit_logs (υπάρχει ήδη)
+       Κάθε διόρθωση γράφεται, π.χ. "έγινε hostPID: false".
+
+    5. Τεκμηρίωση στον πίνακα policy_rules και στη SoA
+       Ποιοι κανόνες ισχύουν και γιατί.
+
+Κάλυψη των 5 απαιτήσεων του ISO:
+    ορίζονται        → CIS Kubernetes Benchmark v1.8, §5.2
+    τεκμηριώνονται   → policy_rules + SoA
+    εφαρμόζονται     → Manager (Stage 2) + Pod Security Admission
+    παρακολουθούνται → audit_logs
+    επανεξετάζονται  → kube-bench (περιοδικά)
+
+Με αυτά τα πέντε το A.8.9 καλύπτεται πλήρως.
+
+Δεν χρειάζεται: Trivy, ClamAV ή αλλαγή στο build του image.
+
+Εκκρεμεί (για την τεκμηρίωση)
+    - Λήψη του επίσημου mapping "CIS Controls v8.1 → ISO/IEC 27001:2022" (δωρεάν, με email) και έλεγχος της γραμμής του A.8.9:
+      https://www.cisecurity.org/insights/white-papers/cis-controls-v8-1-mapping-to-iso-iec-27001-2022
+    - Το CIS Kubernetes Benchmark δεν αναφέρει απευθείας το ISO. Η σύνδεση γίνεται μέσω των CIS Controls (πιθανότατα Safeguard 4.1 "Establish and Maintain a Secure Configuration Process", να επιβεβαιωθεί στο επίσημο mapping).
+
+Πηγές
+    - K3s CIS 1.8 Self-Assessment Guide: https://docs.k3s.io/security/self-assessment-1.8
+    - CIS Controls v8.1 Mapping to ISO/IEC 27001:2022: https://www.cisecurity.org/insights/white-papers/cis-controls-v8-1-mapping-to-iso-iec-27001-2022
+    - Overview of the CIS Benchmarks Usage for Fulfilling the Requirements from ISO/IEC 27001:2022 (Lviv Polytechnic): https://science.lpnu.ua/node/34964
+
+
+Σημείωση (15/10/2026 11:51)
+
+Με την απόφαση του Step 17 (08-workflow), όλα τα παραπάνω υλοποιούνται μέσα στο Compliance Engine: ο έλεγχος και η διόρθωση του manifest (αντί για τον Manager), η τοποθέτηση του label του Pod Security Admission στα namespaces και η περιοδική εκτέλεση του kube-bench (ως cluster checks του εργαλείου). Η καταγραφή γίνεται στο audit του εργαλείου, και οι διακόπτες ON/OFF βρίσκονται στο δικό του UI. Η πλατφόρμα απλώς καλεί το εργαλείο πριν από το deploy.
+
+
+
+
+Υλοποίηση του A.8.9 (15/10/2026 12:25)
+
+Πού βρίσκεται
+    compliance-engine/src/rules/a-8-9-configuration-management.js   (ο κανόνας)
+    compliance-engine/src/engine.js                                (αξιολόγηση, διόρθωση, report)
+Η πλατφόρμα τον καλεί στο Stage 2, πριν από κάθε deploy, και ο admin τον ανοιγοκλείνει ανά profile στο Policy Checklist.
+
+Τι ελέγχει και τι κάνει
+    CIS 5.2.3   hostPID                    → αν είναι true: διόρθωση σε false
+    CIS 5.2.4   hostIPC                    → αν είναι true: διόρθωση σε false
+    CIS 5.2.5   hostNetwork                → αν είναι true: διόρθωση σε false
+    CIS 5.2.6   allowPrivilegeEscalation   → αν λείπει ή είναι true: διόρθωση σε false (σε κάθε container και init container)
+    CIS 5.2.12  hostPath volume            → μπλοκάρισμα του deployment (DENY)
+    CIS 5.2.13  hostPort                   → μπλοκάρισμα του deployment (DENY)
+Ειδική περίπτωση: privileged container. Το Kubernetes δεν δέχεται privileged: true μαζί με allowPrivilegeEscalation: false, οπότε μπλοκάρεται με αιτιολογία "ανήκει στον A.8.2".
+
+Στο σημερινό manifest των workstations ο κανόνας βρίσκει μία παράβαση: το 5.2.6 (το allowPrivilegeEscalation λείπει, άρα ισχύει true). Γι' αυτό ο χρήστης μπορεί να κάνει sudo. Με τον κανόνα ON το sudo σταματά να λειτουργεί. Έτσι ο κανόνας κλείνει στην πράξη και το εύρημα του Step 13.4 (sudo NOPASSWD στο upstream image), ακόμα κι αν το image δεν αλλάξει.
+
+Όταν ο κανόνας είναι OFF
+Ο έλεγχος τρέχει κανονικά, αλλά το manifest δεν αλλάζει. Το report γράφει την παράβαση ως VIOLATION_NOT_ENFORCED, μαζί με το ποιος admin απενεργοποίησε τον κανόνα και πότε. Έτσι μια εξαίρεση από τον κανόνα είναι πάντα ορατή στον auditor.
+
+Αποδεικτικά (για ISO)
+    - Report ανά workstation (workspace-logs-<pod>.json), από το κουμπί "📄 workspace-logs" δίπλα στο link του VS Code
+    - Ημερήσιο log αποφάσεων του εργαλείου (compliance-engine/data/logs/decisions-YYYY-MM-DD.jsonl)
+    - Εγγραφές COMPLIANCE στο Audit Trail της πλατφόρμας
+    - SHA-256 κάθε report, που ελέγχεται σε κάθε λήψη
+
+Κάλυψη των 5 απαιτήσεων του ISO (κατάσταση σήμερα)
+    ορίζονται        → CIS Kubernetes Benchmark v1.8, §5.2, μέσα στο module του κανόνα                    ✅
+    τεκμηριώνονται   → Policy Checklist (policy_rules), κατάλογος κανόνων στο report, SoA               ✅ (η SoA εκκρεμεί)
+    εφαρμόζονται     → Compliance Engine, αυτόματη διόρθωση στο Stage 2, fail-closed                     ✅
+    παρακολουθούνται → report ανά workstation, log αποφάσεων, Audit Trail                                ✅
+    επανεξετάζονται  → kube-bench (περιοδικά)                                                            ☐ εκκρεμεί
+Δεύτερη γραμμή άμυνας: label του Pod Security Admission στο namespace                                    ☐ εκκρεμεί (μαζί με το ξεχωριστό namespace, A.8.31)
+
+Δοκιμές
+    13 unit tests του εργαλείου και 31 integration tests (Manager + PostgreSQL + Compliance Engine), όλα PASS.
+    Δοκιμή στο VM: 08-workflow, Step 20.4.
+
+Για τη διπλωματική (σύγκριση πριν/μετά)
+    Πριν (κανόνας OFF):  CIS 5.2.6 VIOLATION_NOT_ENFORCED, sudo whoami → root
+    Μετά (κανόνας ON):   CIS 5.2.6 REMEDIATED, sudo → απορρίπτεται ("no new privileges")
+    Δείγμα report: compliance-engine/examples/sample-report.json

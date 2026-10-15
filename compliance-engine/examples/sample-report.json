@@ -1,0 +1,160 @@
+{
+  "report_type": "compliance-evaluation",
+  "schema_version": 1,
+  "report_id": "053926c4-b226-4b75-b274-553665d5cd4a",
+  "generated_at": "2026-10-15T09:22:24.974Z",
+  "engine": {
+    "name": "compliance-engine",
+    "version": "0.1.0",
+    "ruleset_version": "0.1.0"
+  },
+  "subject": {
+    "kind": "Pod",
+    "name": "workstation-maria-0042",
+    "namespace": null,
+    "context": {
+      "platform": "thesis-workstations",
+      "workstation_id": "7f3c2a10-5b1e-4c7d-9a2f-0e8b6d4c1a99",
+      "pod_name": "workstation-maria-0042",
+      "namespace": "default",
+      "profile": "developer",
+      "image": "workstation-profile:developer",
+      "owner": "developer@example.com",
+      "requested_at": "2026-10-15T09:18:05.000Z",
+      "approved_by": "admin@example.com",
+      "approved_at": "2026-10-15T09:19:47.000Z"
+    }
+  },
+  "decision": "ALLOW",
+  "compliant": true,
+  "summary": {
+    "rules_enabled": [
+      "A.8.9"
+    ],
+    "rules_disabled": [],
+    "checks_total": 6,
+    "passed": 5,
+    "remediated": 1,
+    "blocked": 0,
+    "violations_not_enforced": 0
+  },
+  "rules": [
+    {
+      "rule": "A.8.9",
+      "title": "Configuration management",
+      "iso": {
+        "standard": "ISO/IEC 27001:2022",
+        "control": "A.8.9",
+        "name": "Configuration management"
+      },
+      "source": "CIS Kubernetes Benchmark v1.8, §5.2 Pod Security Standards",
+      "enabled": true,
+      "setting_changed_by": null,
+      "setting_changed_at": "2026-10-15T09:10:00.000Z",
+      "outcome": "REMEDIATED",
+      "checks": [
+        {
+          "check": "CIS-5.2.3",
+          "title": "Minimize the admission of containers wishing to share the host process ID namespace",
+          "target": "spec.hostPID",
+          "before": null,
+          "expected": false,
+          "status": "PASS"
+        },
+        {
+          "check": "CIS-5.2.4",
+          "title": "Minimize the admission of containers wishing to share the host IPC namespace",
+          "target": "spec.hostIPC",
+          "before": null,
+          "expected": false,
+          "status": "PASS"
+        },
+        {
+          "check": "CIS-5.2.5",
+          "title": "Minimize the admission of containers wishing to share the host network namespace",
+          "target": "spec.hostNetwork",
+          "before": null,
+          "expected": false,
+          "status": "PASS"
+        },
+        {
+          "check": "CIS-5.2.6",
+          "title": "Minimize the admission of containers with allowPrivilegeEscalation",
+          "target": "spec.containers[0].securityContext.allowPrivilegeEscalation",
+          "container": "workspace",
+          "before": null,
+          "expected": false,
+          "after": false,
+          "status": "REMEDIATED"
+        },
+        {
+          "check": "CIS-5.2.12",
+          "title": "Minimize the admission of HostPath volumes",
+          "target": "spec.volumes[*].hostPath",
+          "before": null,
+          "expected": null,
+          "status": "PASS"
+        },
+        {
+          "check": "CIS-5.2.13",
+          "title": "Minimize the admission of containers which use HostPorts",
+          "target": "spec.containers[*].ports[*].hostPort",
+          "before": null,
+          "expected": null,
+          "status": "PASS"
+        }
+      ]
+    }
+  ],
+  "unknown_rules": [],
+  "manifest": {
+    "sha256_before": "e87ba3ebaea44c156abbd35354b0189177f4bde0178922fe9513853aa28c7b9e",
+    "sha256_after": "bb6e3f86e7002e61d736a5a7f0011475cb6fb4197592b543cb64193de8136f91",
+    "changed": true
+  },
+  "ruleset": [
+    {
+      "id": "A.8.9",
+      "title": "Configuration management",
+      "iso": {
+        "standard": "ISO/IEC 27001:2022",
+        "control": "A.8.9",
+        "name": "Configuration management"
+      },
+      "source": "CIS Kubernetes Benchmark v1.8, §5.2 Pod Security Standards",
+      "description": "Configurations, including security configurations, of hardware, software, services and networks shall be established, documented, implemented, monitored and reviewed.",
+      "checks": [
+        {
+          "id": "CIS-5.2.3",
+          "title": "Minimize the admission of containers wishing to share the host process ID namespace",
+          "remediation": "auto"
+        },
+        {
+          "id": "CIS-5.2.4",
+          "title": "Minimize the admission of containers wishing to share the host IPC namespace",
+          "remediation": "auto"
+        },
+        {
+          "id": "CIS-5.2.5",
+          "title": "Minimize the admission of containers wishing to share the host network namespace",
+          "remediation": "auto"
+        },
+        {
+          "id": "CIS-5.2.6",
+          "title": "Minimize the admission of containers with allowPrivilegeEscalation",
+          "remediation": "auto"
+        },
+        {
+          "id": "CIS-5.2.12",
+          "title": "Minimize the admission of HostPath volumes",
+          "remediation": "block"
+        },
+        {
+          "id": "CIS-5.2.13",
+          "title": "Minimize the admission of containers which use HostPorts",
+          "remediation": "block"
+        }
+      ]
+    }
+  ]
+}

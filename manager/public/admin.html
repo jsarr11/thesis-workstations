@@ -247,7 +247,10 @@
                     <td><code>${esc(w.pod_name)}</code></td>
                     <td>${statusBadge(w.status)}${w.review_note ? `<br><small class="muted">${esc(w.review_note)}</small>` : ''}</td>
                     <td>${w.reviewer_email ? `${esc(w.reviewer_email)}<br><small class="muted">${fmt(w.reviewed_at)}</small>` : '-'}</td>
-                    <td>${w.access_link ? `<a href="${esc(w.access_link)}" target="_blank" rel="noopener" style="color:#38bdf8;">Open IDE</a>` : '-'}</td>
+                    <td>${[
+                        w.access_link ? `<a href="${esc(w.access_link)}" target="_blank" rel="noopener" style="color:#38bdf8;">Open IDE</a>` : '',
+                        w.has_compliance_report ? `<a href="/api/workstations/${encodeURIComponent(w.id)}/compliance-report" download style="color:#f59e0b;" title="Compliance report (ISO 27001 / CIS)">📄 workspace-logs${w.compliance_decision === 'DENY' ? ' (DENY)' : ''}</a>` : '',
+                    ].filter(Boolean).join('<br>') || '-'}</td>
                     <td>${ACTIVE.includes(w.status) ? fmt(w.expires_at) : '-'}</td>
                     <td>${OPEN.includes(w.status) ? `<button class="btn btn-danger" onclick="terminateWorkstation('${esc(w.id)}', this)">Terminate</button>` : '-'}</td>
                 </tr>

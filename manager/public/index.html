@@ -29,6 +29,7 @@
         .badge.off { background: #334155; color: #94a3b8; }
         .btn-small { border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; background: #b91c1c; }
         .open-link { color: #34d399; font-weight: bold; }
+        .report-link { color: #38bdf8; font-size: 0.9em; }
         .hidden { display: none; }
     </style>
 </head>
@@ -143,7 +144,12 @@
             document.getElementById('mineTable').innerHTML = rows.map(w => {
                 const [label, cls] = STATUS_LABEL[w.status] || [w.status, ''];
                 const note = w.status === 'REJECTED' && w.review_note ? `<br><small>Αιτιολογία: ${esc(w.review_note)}</small>` : '';
-                const access = w.access_link ? `<a class="open-link" href="${esc(w.access_link)}" target="_blank" rel="noopener">🔗 Άνοιγμα VS Code</a>` : '-';
+                const vscode = w.access_link ? `<a class="open-link" href="${esc(w.access_link)}" target="_blank" rel="noopener">🔗 Άνοιγμα VS Code</a>` : '';
+                const report = w.has_compliance_report
+                    ? `<a class="report-link" href="/api/workstations/${encodeURIComponent(w.id)}/compliance-report" download title="Compliance report (ISO 27001 / CIS)">📄 workspace-logs</a>`
+                    : '';
+                const access = [vscode, report].filter(Boolean).join('<br>') || '-';
+                const denied = w.compliance_decision === 'DENY' ? '<br><small>Μπλοκαρίστηκε από τον έλεγχο συμμόρφωσης (δες το workspace-logs)</small>' : '';
                 const action = w.status === 'WAITING_APPROVAL'
                     ? `<button class="btn-small" onclick="terminate('${esc(w.id)}', this, 'Ακύρωση του αιτήματος;')">Ακύρωση</button>`
                     : ['PENDING', 'DEPLOYING', 'RUNNING'].includes(w.status)
@@ -152,7 +158,7 @@
                 return `<tr>
                     <td>${fmt(w.created_at)}</td>
                     <td>${esc(w.profile_name)}</td>
-                    <td><span class="badge ${cls}">${label}</span>${note}</td>
+                    <td><span class="badge ${cls}">${label}</span>${note}${denied}</td>
                     <td>${['PENDING', 'DEPLOYING', 'RUNNING'].includes(w.status) ? fmt(w.expires_at) : '-'}</td>
                     <td>${access}</td>
                     <td>${action}</td>

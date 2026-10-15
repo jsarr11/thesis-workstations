@@ -1,0 +1,424 @@
+Μοντέλο Αντιστοίχισης Προτύπων ISO στην Τεχνική Υλοποίηση
+(Mapping Governance Standards to Technical Benchmarks)
+
+
+Εισαγωγή
+
+Η ενότητα αυτή περιγράφει την DevSecOps προσέγγιση της αρχιτεκτονικής και αποτελεί τον κορμό της τεκμηρίωσης συμμόρφωσης του project. Συνδέει τις θεωρητικές απαιτήσεις ασφαλείας των προτύπων με τους πρακτικούς ελέγχους που εκτελούν οι αυτοματισμοί στο Kubernetes (k3s) και στα containers.
+
+Η αρχιτεκτονική βασίζεται σε πέντε πρότυπα ISO, τα οποία μαζί καλύπτουν όλο τον κύκλο ζωής ενός workstation: την πολιτική (ISO/IEC 27001), την τεχνική καθοδήγηση (ISO/IEC 27002), την ασφάλεια cloud και εικονικών περιβαλλόντων (ISO/IEC 27017), την ασφάλεια της εφοδιαστικής αλυσίδας λογισμικού (ISO/IEC 27036) και την ασφάλεια εφαρμογών μέσα στον κύκλο ανάπτυξης (ISO/IEC 27034). Τα πρότυπα αυτά ορίζουν τι πρέπει να επιτευχθεί. Το πώς ακριβώς ελέγχεται τεχνικά σε Docker και Kubernetes ορίζεται από τα CIS Benchmarks, τα οποία λειτουργούν ως η γέφυρα ανάμεσα στο πρότυπο και στον κώδικα.
+
+
+1. Ο Πυρήνας της Ασφάλειας: ISO/IEC 27001 και ISO/IEC 27002
+
+ISO/IEC 27001:2022 (το πλαίσιο διαχείρισης)
+
+Το ISO/IEC 27001 ορίζει τις απαιτήσεις για ένα Σύστημα Διαχείρισης Ασφάλειας Πληροφοριών (ISMS). Καθορίζει την πολιτική σε υψηλό επίπεδο, δηλαδή τι πρέπει να προστατευθεί και γιατί. Το Annex A του προτύπου περιέχει τον κατάλογο των 93 ελέγχων (controls), καθένας με μια σύντομη διατύπωση απαίτησης. Η αρίθμηση των ελέγχων στο Annex A είναι ίδια με αυτή του ISO/IEC 27002:2022, οπότε ο συμβολισμός "A.8.9" αναφέρεται στον ίδιο έλεγχο και στα δύο πρότυπα.
+
+Παράδειγμα: η αρχή των ελάχιστων δικαιωμάτων (least privilege) εκφράζεται στους ελέγχους A.5.15 (Access control) και A.8.2 (Privileged access rights). Η απαίτηση είναι ότι οι χρήστες και οι διεργασίες έχουν πρόσβαση μόνο στους πόρους που είναι απαραίτητοι και δεν τρέχουν με υπερβολικά δικαιώματα.
+
+ISO/IEC 27002:2022 (η τεχνική κατεύθυνση)
+
+Το ISO/IEC 27002 δεν περιέχει απαιτήσεις πιστοποίησης. Για κάθε έναν από τους 93 ελέγχους δίνει σκοπό και αναλυτική καθοδήγηση εφαρμογής. Η καθοδήγηση αυτή παραμένει τεχνολογικά ουδέτερη, δηλαδή δεν αναφέρει συγκεκριμένες ρυθμίσεις Docker ή Kubernetes. Σε αυτό το σημείο μπαίνουν τα CIS Benchmarks, που μεταφράζουν την καθοδήγηση σε συγκεκριμένους, ελέγξιμους κανόνες ρύθμισης.
+
+Τεχνική εφαρμογή του παραδείγματος least privilege:
+
+Σε επίπεδο Dockerfile, η σύσταση CIS Docker Benchmark 4.1 (Ensure that a user for the container has been created) ικανοποιείται με την εντολή USER 1000, ώστε το container να μην τρέχει ως root.
+
+Σε επίπεδο Kubernetes manifest, η σύσταση του CIS Kubernetes Benchmark για την ελαχιστοποίηση της κλιμάκωσης δικαιωμάτων (5.2.5 στις εκδόσεις έως 1.7, 5.2.6 στις νεότερες) ικανοποιείται με την παράμετρο allowPrivilegeEscalation: false στο securityContext.
+
+
+2. Η Επέκταση στο Cloud-Native Οικοσύστημα: ISO/IEC 27017, 27036 και 27034
+
+Για να καλυφθεί πλήρως η αρχιτεκτονική της λύσης, ο πυρήνας 27001/27002 συμπληρώνεται από τρία εξειδικευμένα πρότυπα.
+
+ISO/IEC 27017 (ασφάλεια cloud και εικονικών περιβαλλόντων)
+
+Το ISO/IEC 27017 δίνει πρόσθετη καθοδήγηση για τους ελέγχους του 27002 όταν εφαρμόζονται σε υπηρεσίες cloud, και προσθέτει επτά δικούς του ελέγχους με πρόθεμα CLD. Αφορά την ασφάλεια των εικονικών περιβαλλόντων, του διαμοιρασμού ευθυνών και της διαχείρισης της υποδομής. Στο project εφαρμόζεται μέσω της απομόνωσης των workstations στο k3s cluster και της χρήσης admission control gate (Kyverno ή OPA Gatekeeper) για τον έλεγχο των Pods πριν την εκτέλεση. Το πρότυπο αναφέρεται σε virtual machines. Η εφαρμογή του σε containers γίνεται κατ' αναλογία, αφού το container αποτελεί επίσης εικονικό περιβάλλον εκτέλεσης σε κοινόχρηστο host.
+
+ISO/IEC 27036 (ασφάλεια σχέσεων με προμηθευτές και εφοδιαστικής αλυσίδας)
+
+Το ISO/IEC 27036 αφορά την ασφάλεια στις σχέσεις με προμηθευτές, και στα μέρη του που αφορούν τεχνολογία, την ασφάλεια της εφοδιαστικής αλυσίδας λογισμικού και υπηρεσιών cloud. Στο project, οι "προμηθευτές" είναι τα εξωτερικά base images (π.χ. gitpod/openvscode-server), τα registries και τα πακέτα που εγκαθίστανται. Εφαρμόζεται στο Stage 1 (pre-deployment image scan) μέσω εργαλείων όπως το Trivy, ώστε τα base images να μην εισάγουν γνωστές ευπάθειες στο περιβάλλον.
+
+ISO/IEC 27034 (ασφάλεια εφαρμογών)
+
+Το ISO/IEC 27034 περιγράφει πώς η ασφάλεια ενσωματώνεται στον κύκλο ζωής μιας εφαρμογής. Βασική του έννοια είναι το Application Security Control (ASC), δηλαδή ένας ελέγχος ασφαλείας που ορίζεται μαζί με τον τρόπο που επαληθεύεται. Στο project εκφράζεται από τον Manager (glue layer), που είναι ο προγραμματιστικός μηχανισμός ο οποίος τρέχει το εσωτερικό security pipeline, επαληθεύει κάθε κανόνα και εφαρμόζει auto-remediation όταν τα manifests δεν πληρούν τις απαιτήσεις. Το ίδιο το auto-remediation δεν περιγράφεται από το πρότυπο. Είναι η συνεισφορά του project πάνω στο πλαίσιο που ορίζει το 27034.
+
+
+3. Η Αλυσίδα Συμμόρφωσης
+
+Το παρακάτω σχήμα δείχνει πώς μια απαίτηση περνάει από το πρότυπο στον κώδικα.
+
+    [ISO 27017] ➔ Προστασία υποδομής (k3s / Proxmox)
+    [ISO 27036] ➔ Έλεγχος supply chain (Trivy scans)
+    [ISO 27034] ➔ DevSecOps αυτοματισμός (Manager pipeline)
+           │
+           ▼
+    ┌──────────────────────────────┐
+    │  ISO 27001 / 27002 Control   │  (High-level policy, π.χ. "Least Privilege")
+    └──────────────┬───────────────┘
+                   │  αντιστοιχίζεται σε...
+                   ▼
+    ┌──────────────────────────────┐
+    │  CIS Benchmark Rule          │  (Technical standard, π.χ. allowPrivilegeEscalation)
+    └──────────────┬───────────────┘
+                   │  ελέγχεται και διορθώνεται από...
+                   ▼
+    ┌──────────────────────────────┐
+    │  Manager (Glue Layer Engine) │  (Auto-remediation: allowPrivilegeEscalation=false)
+    └──────────────────────────────┘
+
+Η σύνδεση CIS Benchmark και ISO γίνεται τεκμηριωμένα και όχι με εκτίμηση. Κάθε σύσταση ενός CIS Benchmark αντιστοιχίζεται από το CIS σε ένα ή περισσότερα safeguards των CIS Critical Security Controls (v8). Το CIS δημοσιεύει επίσημη αντιστοίχιση των CIS Controls v8 με το ISO/IEC 27001:2022. Έτσι η διαδρομή είναι: σύσταση CIS Benchmark, μετά CIS Control safeguard, μετά έλεγχος Annex A του ISO/IEC 27001:2022.
+
+
+4. Δομή και Πεδίο Εφαρμογής του ISO/IEC 27002:2022
+
+Το πρότυπο χωρίζεται σε τέσσερις θεματικές κατηγορίες με συνολικά 93 ελέγχους.
+
+Η κατηγορία 5 (Organizational controls) έχει 37 ελέγχους και αφορά πολιτικές, ρόλους, προμηθευτές και συμβάσεις. Είναι εκτός πεδίου της εργασίας.
+
+Η κατηγορία 6 (People controls) έχει 8 ελέγχους και αφορά προσλήψεις και εκπαίδευση προσωπικού. Είναι εκτός πεδίου της εργασίας.
+
+Η κατηγορία 7 (Physical controls) έχει 14 ελέγχους και αφορά φυσική ασφάλεια, όπως κλειδαριές, κάμερες και datacenters. Είναι εκτός πεδίου της εργασίας.
+
+Η κατηγορία 8 (Technological controls) έχει 34 ελέγχους και αφορά τεχνικά μέτρα, όπως ρυθμίσεις συστημάτων, ευπάθειες, δίκτυο, καταγραφή και ανάπτυξη λογισμικού. Αυτή είναι η κατηγορία που αφορά την εργασία.
+
+Από τους 93 ελέγχους, οι 59 των κατηγοριών 5, 6 και 7 δηλώνονται εκτός πεδίου, επειδή αφορούν διοικητικά, ανθρώπινα ή φυσικά μέτρα και όχι αυτοματισμούς λογισμικού. Η εργασία εστιάζει στην κατηγορία 8. Από τους 34 τεχνικούς ελέγχους επιλέγεται ένα υποσύνολο που αντιστοιχεί στο container hardening, στο image scanning, στην απομόνωση και στο remediation των Kubernetes manifests (αναλυτικά στην ενότητα 11).
+
+Διατύπωση πεδίου εφαρμογής (scope statement) για το κείμενο της εργασίας:
+
+"Το διεθνές πρότυπο ISO/IEC 27002:2022 περιλαμβάνει 93 ελέγχους ασφαλείας κατανεμημένους σε 4 θεματικές κατηγορίες. Η παρούσα διπλωματική εργασία επικεντρώνεται αποκλειστικά στην κατηγορία 8 (Technological Controls). Ο αυτόματος μηχανισμός συμμόρφωσης (Manager / Glue Layer) επαληθεύει και διορθώνει (remediates) ένα στοχευμένο υποσύνολο αυτών των τεχνικών ελέγχων, οι οποίοι χαρτογραφούνται στις συστάσεις των CIS Docker και CIS Kubernetes Benchmarks."
+
+
+5. Σχετικά Εδάφια του Κύριου Σώματος του ISO/IEC 27001:2022
+
+Clause 6.1.3 (Information security risk treatment): Απαιτεί τη σύνταξη Δήλωσης Εφαρμοσιμότητας (Statement of Applicability, SoA). Στη SoA αναφέρονται και οι 93 έλεγχοι του Annex A, με δήλωση για τον καθένα αν εφαρμόζεται ή όχι και αιτιολόγηση. Στο project, η SoA τεκμηριώνει ποιοι έλεγχοι της κατηγορίας 8 υλοποιούνται και γιατί οι υπόλοιποι εξαιρούνται.
+
+Clause 8.1 (Operational planning and control): Απαιτεί την επιχειρησιακή εφαρμογή και εκτέλεση των διαδικασιών ασφαλείας στην πράξη. Στο project, αυτό αντιστοιχεί στους αυτοματισμούς του Manager, που εφαρμόζουν τους ελέγχους σε κάθε δημιουργία workstation.
+
+
+6. Οι 34 Τεχνολογικοί Έλεγχοι (ISO/IEC 27001:2022 Annex A.8 και ISO/IEC 27002:2022 κεφάλαιο 8)
+
+Για κάθε έλεγχο δίνεται η απαίτηση και, όπου υπάρχει, η σύνδεση με το project.
+
+A.8.1 User endpoint devices: Απαιτεί την προστασία των πληροφοριών που προσπελαύνονται ή αποθηκεύονται σε τερματικές συσκευές χρηστών (εταιρικά laptops, κινητά).
+
+A.8.2 Privileged access rights: Απαιτεί τον περιορισμό και τον έλεγχο των δικαιωμάτων πρόσβασης με αυξημένα προνόμια (root, admin). Σχετίζεται με το project (Kubernetes RBAC, απαγόρευση privileged containers).
+
+A.8.3 Information access restriction: Απαιτεί τον περιορισμό της πρόσβασης σε πληροφορίες σύμφωνα με την πολιτική ελέγχου πρόσβασης.
+
+A.8.4 Access to source code: Απαιτεί την προστασία της πρόσβασης στον πηγαίο κώδικα, στα εργαλεία ανάπτυξης και στις βιβλιοθήκες λογισμικού.
+
+A.8.5 Secure authentication: Απαιτεί την εφαρμογή ασφαλών μηχανισμών αυθεντικοποίησης (π.χ. MFA, κανόνες κωδικών) ανάλογα με τις απαιτήσεις πρόσβασης.
+
+A.8.6 Capacity management: Απαιτεί την παρακολούθηση και τη διαχείριση της χρήσης πόρων (CPU, RAM, storage). Σχετίζεται με το project (resource limits και requests).
+
+A.8.7 Protection against malware: Απαιτεί την εφαρμογή μέτρων προστασίας από κακόβουλο λογισμικό. Σχετίζεται με το project (σάρωση images πριν το deployment).
+
+A.8.8 Management of technical vulnerabilities: Απαιτεί την απόκτηση πληροφοριών για τεχνικές ευπάθειες, την αξιολόγηση της έκθεσης και τη λήψη μέτρων. Σχετίζεται με το project (vulnerability scanning με Trivy).
+
+A.8.9 Configuration management: Απαιτεί τον καθορισμό, την τεκμηρίωση, την εφαρμογή, την παρακολούθηση και την αναθεώρηση ασφαλών ρυθμίσεων για υλικό, λογισμικό, υπηρεσίες και δίκτυα. Σχετίζεται με το project (CIS hardening και auto-remediation από τον Manager).
+
+A.8.10 Information deletion: Απαιτεί την ασφαλή διαγραφή πληροφοριών όταν δεν είναι πλέον απαραίτητες.
+
+A.8.11 Data masking: Απαιτεί τη χρήση τεχνικών απόκρυψης δεδομένων (masking, ανωνυμοποίηση) σύμφωνα με την πολιτική πρόσβασης.
+
+A.8.12 Data leakage prevention: Απαιτεί μέτρα πρόληψης διαρροής δεδομένων σε συστήματα, δίκτυα και συσκευές. Σχετίζεται με το project (ανίχνευση secrets σε plain text, read-only root filesystem).
+
+A.8.13 Information backup: Απαιτεί τη δημιουργία και διατήρηση αντιγράφων ασφαλείας και τη δοκιμή της αποκατάστασης.
+
+A.8.14 Redundancy of information processing facilities: Απαιτεί επαρκή εφεδρεία (redundancy, failover) για την κάλυψη των απαιτήσεων διαθεσιμότητας.
+
+A.8.15 Logging: Απαιτεί τη δημιουργία, αποθήκευση, προστασία και ανάλυση αρχείων καταγραφής (logs). Σχετίζεται με το project (JSON audit logs του Manager).
+
+A.8.16 Monitoring activities: Απαιτεί την παρακολούθηση συστημάτων και δικτύων για ανώμαλη συμπεριφορά και τον εντοπισμό μη εξουσιοδοτημένων ενεργειών.
+
+A.8.17 Clock synchronization: Απαιτεί τον συγχρονισμό των ρολογιών των συστημάτων με έγκυρες πηγές ώρας (NTP).
+
+A.8.18 Use of privileged utility programs: Απαιτεί τον περιορισμό και τον έλεγχο της χρήσης βοηθητικών προγραμμάτων που μπορούν να παρακάμψουν ελέγχους.
+
+A.8.19 Installation of software on operational systems: Απαιτεί κανόνες για την ασφαλή εγκατάσταση λογισμικού σε παραγωγικά συστήματα.
+
+A.8.20 Network controls: Απαιτεί την προστασία και τον έλεγχο των δικτύων και των δικτυακών συσκευών. Σχετίζεται με το project (Kubernetes NetworkPolicies).
+
+A.8.21 Security of network services: Απαιτεί τον προσδιορισμό και την εφαρμογή μηχανισμών ασφαλείας και επιπέδων υπηρεσίας για τις δικτυακές υπηρεσίες.
+
+A.8.22 Segregation of networks: Απαιτεί τον διαχωρισμό υπηρεσιών, χρηστών και συστημάτων σε ομάδες δικτύων. Σχετίζεται με το project (namespaces, απομόνωση workstations).
+
+A.8.23 Web filtering: Απαιτεί τη διαχείριση της πρόσβασης σε εξωτερικούς ιστότοπους για μείωση της έκθεσης σε κακόβουλο περιεχόμενο.
+
+A.8.24 Use of cryptography: Απαιτεί κανόνες για τη χρήση κρυπτογραφίας και τη διαχείριση κλειδιών (π.χ. TLS).
+
+A.8.25 Secure development life cycle: Απαιτεί κανόνες για την ασφαλή ανάπτυξη λογισμικού και συστημάτων. Σχετίζεται με το project (DevSecOps pipeline).
+
+A.8.26 Application security requirements: Απαιτεί τον προσδιορισμό των απαιτήσεων ασφαλείας κατά την ανάπτυξη ή την προμήθεια εφαρμογών.
+
+A.8.27 Secure system architecture and engineering principles: Απαιτεί αρχές ασφαλούς αρχιτεκτονικής στον σχεδιασμό συστημάτων. Σχετίζεται με το project (hardened container architecture).
+
+A.8.28 Secure coding: Απαιτεί αρχές ασφαλούς προγραμματισμού στην ανάπτυξη λογισμικού. Σχετίζεται με το project (hardening των Dockerfiles, USER 1000).
+
+A.8.29 Security testing in development and acceptance: Απαιτεί δοκιμές ασφαλείας μέσα στον κύκλο ανάπτυξης. Σχετίζεται με το project (στατικοί και δυναμικοί έλεγχοι compliance).
+
+A.8.30 Outsourced development: Απαιτεί την καθοδήγηση, παρακολούθηση και επισκόπηση της ανάπτυξης που ανατίθεται σε τρίτους.
+
+A.8.31 Separation of development, test and production environments: Απαιτεί τον διαχωρισμό και την ασφάλεια των περιβαλλόντων ανάπτυξης, δοκιμών και παραγωγής. Σχετίζεται με το project (απομόνωση στο cluster).
+
+A.8.32 Change management: Απαιτεί διαδικασίες διαχείρισης αλλαγών στην υποδομή και στο λογισμικό.
+
+A.8.33 Test information: Απαιτεί την επιλογή, προστασία και διαχείριση των δεδομένων που χρησιμοποιούνται σε δοκιμές.
+
+A.8.34 Protection of information systems during audit testing: Απαιτεί τον σχεδιασμό των δοκιμών ελέγχου (audits) ώστε να ελαχιστοποιείται η διαταραχή των επιχειρησιακών διεργασιών.
+
+
+7. ISO/IEC 27017:2015 (Cloud Security Controls)
+
+Το ISO/IEC 27017:2015 εξειδικεύει τους ελέγχους του ISO/IEC 27002 για περιβάλλοντα cloud και εικονικοποίησης. Η έκδοση 2015 είναι γραμμένη πάνω στην αρίθμηση του ISO/IEC 27002:2013. Για τη σύνδεση με τους ελέγχους του 2022 χρησιμοποιείται ο πίνακας αντιστοίχισης του Annex B του ISO/IEC 27002:2022.
+
+Το πρότυπο κάνει δύο πράγματα. Πρώτον, δίνει πρόσθετη καθοδήγηση cloud για υπάρχοντες ελέγχους του 27002 (π.χ. διαχείριση προνομιακής πρόσβασης, διαχείριση χωρητικότητας, διαχείριση ευπαθειών, διαχωρισμός δικτύων, διαχείριση αλλαγών). Δεύτερον, προσθέτει επτά νέους ελέγχους:
+
+CLD.6.3.1 Shared roles and responsibilities within a cloud computing environment: Ορισμός των ορίων ευθύνης μεταξύ παρόχου και πελάτη. Στο project, το όριο ανάμεσα στην πλατφόρμα (k3s cluster, Manager) και στο workstation Pod που παραδίδεται στον χρήστη.
+
+CLD.8.1.5 Removal of cloud service customer assets: Επιστροφή ή ασφαλής αφαίρεση των δεδομένων του πελάτη στη λήξη της υπηρεσίας. Στο project, η διαγραφή του Pod και των volumes όταν τερματίζεται ένα workstation.
+
+CLD.9.5.1 Segregation in virtual computing environments: Απομόνωση των εικονικών περιβαλλόντων διαφορετικών πελατών που μοιράζονται τον ίδιο host. Στο project, η απομόνωση workstations μέσω namespaces και Pod security.
+
+CLD.9.5.2 Virtual machine hardening: Σκληραγώγηση των εικονικών μηχανών, με απενεργοποίηση περιττών υπηρεσιών και εφαρμογή ασφαλών ρυθμίσεων. Στο project εφαρμόζεται κατ' αναλογία στα container images και στα manifests.
+
+CLD.12.1.5 Administrator's operational security: Τεκμηριωμένες διαδικασίες για τις διαχειριστικές ενέργειες στο cloud. Στο project, η προστασία των διαχειριστικών διεπαφών (Manager API, kube-apiserver, API tokens).
+
+CLD.12.4.5 Monitoring of cloud services: Δυνατότητα του πελάτη να παρακολουθεί τη λειτουργία της υπηρεσίας που χρησιμοποιεί. Στο project, η καταγραφή και η παρακολούθηση των workstations και του cluster.
+
+CLD.13.1.4 Alignment of security management for virtual and physical networks: Συνέπεια πολιτικής ασφαλείας ανάμεσα σε φυσικά και εικονικά δίκτυα. Στο project, η ευθυγράμμιση των NetworkPolicies του k3s με τη δικτύωση του Proxmox.
+
+
+8. ISO/IEC 27036 (Information Security for Supplier Relationships)
+
+Το ISO/IEC 27036 είναι σειρά προτύπων. Στο project αξιοποιούνται τρία από τα μέρη της.
+
+Το ISO/IEC 27036-2 ορίζει απαιτήσεις για τον καθορισμό, την εφαρμογή και την παρακολούθηση της ασφάλειας στις σχέσεις με προμηθευτές, περιλαμβανομένης της αξιολόγησης κινδύνου από τη χρήση λογισμικού τρίτων.
+
+Το ISO/IEC 27036-3 δίνει καθοδήγηση για την ασφάλεια της εφοδιαστικής αλυσίδας υλικού, λογισμικού και υπηρεσιών (ICT supply chain). Καλύπτει την προέλευση των εξαρτημάτων, τις ευπάθειες σε εξωτερικά components και τη διαχείριση αλλαγών και ενημερώσεων σε αυτά.
+
+Το ISO/IEC 27036-4 δίνει καθοδήγηση για την ασφάλεια των υπηρεσιών cloud ως προμηθευόμενων υπηρεσιών, περιλαμβανομένης της διαφάνειας για το τι παρέχει ο πάροχος.
+
+Στο project, οι προμηθευτές είναι τα εξωτερικά base images, τα registries από τα οποία προέρχονται και τα πακέτα που εγκαθίστανται. Τα μέρη αυτά τεκμηριώνουν θεωρητικά την αξιολόγηση κινδύνου από λογισμικό τρίτων, την επαλήθευση προέλευσης (image provenance, ψηφιακές υπογραφές), τη συνεχή σάρωση των base images για ευπάθειες και τη διαχείριση των ενημερώσεων στα εξωτερικά images και πακέτα.
+
+
+9. ISO/IEC 27034 (Application Security)
+
+Το ISO/IEC 27034 είναι επίσης σειρά προτύπων. Στο project αξιοποιούνται δύο μέρη.
+
+Το ISO/IEC 27034-1 (Overview and concepts) εισάγει τις βασικές έννοιες. Το application security context ορίζει το πλαίσιο της εφαρμογής, τα όριά της και το επιθυμητό επίπεδο εμπιστοσύνης. Το Application Security Control (ASC) είναι ένας έλεγχος ασφαλείας που ορίζεται μαζί με τη μέτρηση επαλήθευσής του. Το Application Security Life Cycle Reference Model περιγράφει πώς τα ASCs εφαρμόζονται και επαληθεύονται σε κάθε φάση του κύκλου ζωής.
+
+Το ISO/IEC 27034-5 (Protocols and application security controls data structure) ορίζει δομή δεδομένων για την περιγραφή των ASCs, ώστε οι έλεγχοι να καταγράφονται με τυποποιημένο, μηχανικά επεξεργάσιμο τρόπο.
+
+Στο project, κάθε κανόνας του Manager αντιμετωπίζεται ως ASC: έχει ορισμό (π.χ. "το container δεν τρέχει ως root"), μέτρηση επαλήθευσης (έλεγχος του runAsUser στο manifest) και αποθηκεύεται ως δομημένη εγγραφή (πίνακας policies της βάσης, JSON/YAML). Η αυτόματη επαλήθευση κατά τη δημιουργία κάθε workstation αντιστοιχεί στην ενσωμάτωση των ASCs μέσα στον κύκλο ζωής. Το αυτόματο remediation είναι επέκταση του project πάνω σε αυτό το πλαίσιο.
+
+
+10. Πίνακας Δρομολόγησης: από τον Έλεγχο του 27002 στο Εξειδικευμένο Πρότυπο
+
+Ο πίνακας αυτός δείχνει, για κάθε επιλεγμένο έλεγχο της κατηγορίας 8, σε ποιο εξειδικευμένο πρότυπο βρίσκεται η πρόσθετη τεκμηρίωση.
+
+Έλεγχοι υποδομής, δικτύου και πρόσβασης, που τεκμηριώνονται από το ISO/IEC 27017:
+
+Οι A.8.2 (Privileged access rights) και A.8.5 (Secure authentication) συνδέονται με την cloud καθοδήγηση του 27017 για τη διαχείριση προνομιακής πρόσβασης και με τον CLD.12.1.5 (Administrator's operational security).
+
+Ο A.8.6 (Capacity management) συνδέεται με την cloud καθοδήγηση του 27017 για τη διαχείριση χωρητικότητας (resource limits) και με τον CLD.12.4.5 (Monitoring of cloud services).
+
+Ο A.8.9 (Configuration management) συνδέεται με τον CLD.9.5.2 (Virtual machine hardening), εφαρμοσμένο κατ' αναλογία στα container images.
+
+Ο A.8.10 (Information deletion) συνδέεται με τον CLD.8.1.5 (Removal of cloud service customer assets).
+
+Οι A.8.15 (Logging) και A.8.16 (Monitoring activities) συνδέονται με τον CLD.12.4.5 (Monitoring of cloud services).
+
+Οι A.8.20 (Network controls) και A.8.21 (Security of network services) συνδέονται με τον CLD.13.1.4 (Alignment of security management for virtual and physical networks) και με την cloud καθοδήγηση για την ασφάλεια δικτύων.
+
+Οι A.8.22 (Segregation of networks) και A.8.31 (Separation of environments) συνδέονται με τον CLD.9.5.1 (Segregation in virtual computing environments).
+
+Ο A.8.32 (Change management) συνδέεται με την cloud καθοδήγηση του 27017 για τη διαχείριση αλλαγών.
+
+Έλεγχοι εξαρτήσεων, ευπαθειών και τρίτων, που τεκμηριώνονται από το ISO/IEC 27036:
+
+Οι A.8.7 (Protection against malware) και A.8.8 (Management of technical vulnerabilities) συνδέονται με το 27036-3, για την ασφάλεια και τις ευπάθειες των εξωτερικών components (base images, πακέτα).
+
+Ο A.8.30 (Outsourced development) συνδέεται με το 27036-2, για την αξιολόγηση κινδύνου προμηθευτών και τις απαιτήσεις ασφαλείας στη σχέση μαζί τους.
+
+Ο A.8.32 (Change management) συνδέεται επίσης με το 27036-3, για τη διαχείριση αλλαγών και ενημερώσεων σε εξωτερικά components.
+
+Έλεγχοι κώδικα, pipeline και αυτοματισμού, που τεκμηριώνονται από το ISO/IEC 27034:
+
+Ο A.8.9 (Configuration management) συνδέεται με την έννοια του ASC με μέτρηση επαλήθευσης (27034-1), πάνω στην οποία χτίζεται το auto-remediation του Manager.
+
+Ο A.8.25 (Secure development life cycle) συνδέεται με το Application Security Life Cycle Reference Model του 27034-1.
+
+Οι A.8.26 (Application security requirements) και A.8.27 (Secure architecture) συνδέονται με το application security context του 27034-1.
+
+Ο A.8.28 (Secure coding) και η αποθήκευση των κανόνων ως δεδομένα (policy as code) συνδέονται με τη δομή δεδομένων ASC του 27034-5.
+
+Ο A.8.29 (Security testing) συνδέεται με την επαλήθευση των ASCs (validation gates) του 27034-1.
+
+Όσοι από τους 34 ελέγχους δεν εμφανίζονται παραπάνω (π.χ. A.8.17 Clock synchronization ή A.8.23 Web filtering) δεν έχουν ειδική επέκταση στα 27017, 27036 ή 27034 που να αφορά το project, και τεκμηριώνονται μόνο από το ISO/IEC 27002.
+
+
+11. Ιεράρχηση των 34 Ελέγχων για το Project (Priority Matrix)
+
+Οι 34 τεχνολογικοί έλεγχοι ταξινομούνται από τον πιο κεντρικό για τον κώδικα του project (#1) έως τον πιο άσχετο (#34), σε πέντε επίπεδα (tiers). Για τα tiers 1 έως 3 δίνεται το εργαλείο ή η πηγή του κανόνα, ο συγκεκριμένος κανόνας και η ενέργεια του Manager. Η αρίθμηση των συστάσεων CIS αναφέρεται σε συγκεκριμένη έκδοση κάθε benchmark και μπορεί να μετατοπιστεί μεταξύ εκδόσεων. Στο κείμενο της εργασίας δηλώνεται ρητά η έκδοση που χρησιμοποιείται (CIS Docker Benchmark, CIS Kubernetes Benchmark και το CIS Hardening Guide του k3s).
+
+
+Tier 1: Ο πυρήνας (τα 7 απαραίτητα του MVP)
+
+Αυτοί οι έλεγχοι είναι η καρδιά της εργασίας. Χωρίς αυτούς δεν υπάρχει το εργαλείο αυτοματισμού.
+
+1. A.8.9 Configuration management. Είναι η επιβολή του CIS Benchmark και το auto-remediation του Manager στα YAML manifests. Πηγή: CIS Kubernetes Benchmark. Κανόνες: ενότητα 5.2 (Pod Security Standards). Ενέργεια Manager: εντοπίζει λανθασμένες ρυθμίσεις και επιβάλλει κανόνες hardening στα Pods, για παράδειγμα απαγόρευση των hostPID και hostIPC.
+
+2. A.8.28 Secure coding. Είναι η αρχιτεκτονική των Dockerfiles: εκτέλεση ως non-root και αφαίρεση περιττών binaries. Πηγή: CIS Docker Benchmark. Κανόνας: 4.1 (Ensure that a user for the container has been created). Ενέργεια Manager: απορρίπτει images ή manifests που προορίζονται να τρέξουν ως root και απαιτεί ή προσθέτει (inject) το runAsUser: 1000.
+
+3. A.8.7 Protection against malware. Είναι η σάρωση των base images στο Stage 1, ώστε να απορρίπτονται τα μολυσμένα images πριν το deployment. Το CIS Benchmark δεν καλύπτει malware. Το Trivy επίσης δεν κάνει ανίχνευση malware: καλύπτει ευπάθειες (CVEs), λανθασμένες ρυθμίσεις και secrets. Για την ανίχνευση κακόβουλου κώδικα χρησιμοποιείται επιπλέον antivirus scanner στο filesystem του image (π.χ. ClamAV). Ενέργεια Manager: καλεί τον scanner και, αν επιστραφεί θετικό αποτέλεσμα, ακυρώνει αμέσως το deployment.
+
+4. A.8.31 Separation of development, test and production environments. Είναι η απομόνωση των workstations (namespaces, απομόνωση στο k3s). Πηγή: CIS Kubernetes Benchmark. Κανόνας: 5.7.4 (The default namespace should not be used). Ενέργεια Manager: ελέγχει το manifest και, αν το workstation πρόκειται να σηκωθεί στο default namespace, κάνει auto-remediate και το μεταφέρει στο σωστό, απομονωμένο namespace.
+
+5. A.8.12 Data leakage prevention. Είναι ο έλεγχος ώστε να μην υπάρχουν secrets σε plain text στα manifests και η προστασία του filesystem. Πηγή: CIS Docker Benchmark και Trivy (secret scanning). Κανόνας: η σύσταση για read-only root filesystem (5.12 σε παλαιότερες εκδόσεις του benchmark). Ενέργεια Manager: προσθέτει αυτόματα readOnlyRootFilesystem: true στο securityContext του Pod, ώστε να μην είναι δυνατή η εγγραφή εκτός των επιτρεπόμενων volumes, και απορρίπτει manifests με secrets σε plain text.
+
+6. A.8.25 Secure development life cycle. Είναι η ίδια η φιλοσοφία του DevSecOps pipeline: η ασφάλεια μπαίνει αυτοματοποιημένα στον κύκλο ζωής. Πηγή: το εσωτερικό pipeline του project (glue layer). Κανόνας: αρχιτεκτονικό best practice (shift-left security). Ενέργεια Manager: η ίδια η ύπαρξή του ως ελεγκτή που παρεμβαίνει και διορθώνει το manifest πριν το τελικό deployment στο k3s, με λειτουργία ανάλογη ενός mutating admission webhook.
+
+7. A.8.27 Secure system architecture and engineering principles. Είναι ο αρχιτεκτονικός σχεδιασμός του k3s πάνω στο Proxmox με security-first προσέγγιση. Πηγή: CIS Kubernetes Benchmark. Κανόνες: ενότητα 4 (Worker Node Security Configuration). Ενέργεια Manager: επιβεβαιώνει ότι οι ρυθμίσεις των k3s nodes (π.χ. ρυθμίσεις και δικαιώματα αρχείων του kubelet) είναι σύμφωνες με τις συστάσεις.
+
+
+Tier 2: Εύκολες επεκτάσεις (άμεση προστιθέμενη αξία στο k3s)
+
+Αυτοί οι έλεγχοι προστίθενται εύκολα ως επιπλέον κανόνες στον Manager και δείχνουν την επεκτασιμότητα του μηχανισμού.
+
+8. A.8.20 Network controls. Είναι η εφαρμογή Kubernetes NetworkPolicies (ποιο Pod επικοινωνεί με ποιο). Πηγή: CIS Kubernetes Benchmark. Κανόνας: 5.3.1 (Ensure that the CNI in use supports Network Policies). Ενέργεια Manager: επιβεβαιώνει ότι το cluster υποστηρίζει περιορισμό δικτύου. Το k3s περιλαμβάνει από προεπιλογή ενσωματωμένο network policy controller, ενώ εναλλακτικά μπορεί να χρησιμοποιηθεί CNI όπως Cilium ή Calico.
+
+9. A.8.22 Segregation of networks. Είναι ο λογικός διαχωρισμός του δικτύου ανά namespace. Πηγή: CIS Kubernetes Benchmark. Κανόνας: 5.3.2 (Ensure that all Namespaces have Network Policies defined). Ενέργεια Manager: κάθε φορά που δημιουργείται νέο namespace, προσθέτει (auto-remediate) ένα default NetworkPolicy που κόβει την εισερχόμενη κίνηση από άλλα namespaces.
+
+10. A.8.6 Capacity management. Είναι ο έλεγχος ότι τα manifests ορίζουν resource limits και requests (CPU/RAM). Πηγή: Kubernetes security best practices. Κανόνας: εφαρμογή resource limits και ResourceQuotas. Ενέργεια Manager: αν το manifest δεν δηλώνει CPU/RAM, προσθέτει αυτόματα resources.limits και resources.requests με ασφαλείς προεπιλεγμένες τιμές.
+
+11. A.8.2 Privileged access rights. Είναι ο έλεγχος του Kubernetes RBAC και η αποτροπή privileged containers. Πηγή: CIS Kubernetes Benchmark. Κανόνας: 5.2.1 (Minimize the admission of privileged containers, 5.2.2 στις νεότερες εκδόσεις). Ενέργεια Manager: αν βρει privileged: true, το αλλάζει σε false και προσθέτει drop: ["ALL"] στα Linux capabilities.
+
+12. A.8.8 Management of technical vulnerabilities. Είναι η διαχείριση των ευπαθειών (CVEs) που εντοπίζει το Trivy. Πηγή: Trivy, με βάσεις δεδομένων ευπαθειών όπως η NVD. Κανόνας: vulnerability scan με όριο σοβαρότητας. Ενέργεια Manager: σκανάρει το base image και, αν βρεθούν ευπάθειες CRITICAL, μπλοκάρει το deployment και απαιτεί ενημέρωση του image.
+
+13. A.8.15 Logging. Είναι η καταγραφή των ενεργειών του Manager και η συλλογή logs από το k3s. Πηγή: CIS Kubernetes Benchmark. Κανόνας: 3.2.1 (Ensure that a minimal audit policy is created). Ενέργεια Manager: παράγει δομημένα logs σε JSON για κάθε auto-remediation (π.χ. "άλλαξε το namespace") και επιβεβαιώνει ότι το k3s έχει ενεργό audit logging.
+
+
+Tier 3: Υποδομή και πλατφόρμα (advanced integration)
+
+Αυτοί οι έλεγχοι ενισχύουν την αρχιτεκτονική, αλλά απαιτούν ενσωμάτωση εξωτερικών συστημάτων πέρα από το απλό YAML parsing.
+
+14. A.8.16 Monitoring activities. Είναι η παρακολούθηση του k3s για ύποπτη συμπεριφορά κατά την εκτέλεση (runtime). Εργαλεία: Prometheus, Grafana, Falco. Κανόνας: runtime threat detection best practices. Ενέργεια Manager: προσθέτει αυτόματα annotations (π.χ. prometheus.io/scrape: "true") στα workstations, ώστε να τα παρακολουθεί το σύστημα monitoring.
+
+15. A.8.29 Security testing in development and acceptance. Είναι οι δυναμικές δοκιμές (DAST) και οι τελικές επαληθεύσεις. Πηγή: metadata του CI/CD (π.χ. GitHub Actions). Κανόνας: DevSecOps release gates. Ενέργεια Manager: απαιτεί συγκεκριμένο label ή annotation στο manifest (π.χ. security-scan: passed), που προστίθεται μόνο αν τα tests του pipeline έχουν περάσει. Διαφορετικά απορρίπτει το deployment.
+
+16. A.8.5 Secure authentication. Είναι η επιβεβαίωση της ταυτότητας όσων επικοινωνούν με το cluster. Πηγή: Kubernetes RBAC και API server. Κανόνες: CIS Kubernetes ενότητα 1.2 (API server). Ενέργεια Manager: ελέγχει τα εισερχόμενα αιτήματα και απορρίπτει όσα προέρχονται από μη αυθεντικοποιημένους χρήστες (system:anonymous). Επίσης, η πρόσβαση στο Admin UI και στο API του Manager απαιτεί αυθεντικοποίηση (JWT ή API keys).
+
+17. A.8.3 Information access restriction. Είναι ο περιορισμός του τι μπορεί να δει και να αλλάξει το ίδιο το εργαλείο. Πηγή: Kubernetes RBAC (Roles, RoleBindings). Κανόνες: CIS Kubernetes ενότητα 5.1 (RBAC and Service Accounts). Ενέργεια: ο Manager τρέχει με αυστηρά περιορισμένο ServiceAccount, που του επιτρέπει να διαχειρίζεται μόνο Pods στα namespaces των workstations και τίποτα άλλο στο cluster.
+
+18. A.8.4 Access to source code. Είναι η προστασία του κώδικα και των images που εκτελούνται. Εργαλεία: Cosign / Sigstore. Κανόνας: επαλήθευση ψηφιακής υπογραφής image. Ενέργεια Manager: πριν το deployment ελέγχει αν το image είναι υπογεγραμμένο. Αν δεν είναι, και άρα μπορεί να έχει αλλοιωθεί, το απορρίπτει.
+
+19. A.8.24 Use of cryptography. Είναι η κρυπτογράφηση της δικτυακής κίνησης. Εργαλεία: Ingress controller, cert-manager. Κανόνας: Kubernetes best practices (TLS everywhere). Ενέργεια Manager: αν ζητηθεί εξωτερικό URL για το workstation (Ingress), επιβάλλει ρύθμιση TLS στο manifest και μπλοκάρει την απλή, μη κρυπτογραφημένη HTTP κίνηση.
+
+20. A.8.21 Security of network services. Είναι η ασφαλής έκθεση υπηρεσιών προς τα έξω. Εργαλεία: Ingress annotations, NGINX. Κανόνας: OWASP Kubernetes secure ingress. Ενέργεια Manager: ελέγχει αν οι υπηρεσίες έχουν rate limiting (για προστασία από DoS) και προσθέτει αυτόματα annotations όπως nginx.ingress.kubernetes.io/limit-rps.
+
+21. A.8.26 Application security requirements. Είναι η δυναμική φόρτωση των κανόνων του Manager. Πηγή: ConfigMaps / CRDs ή η βάση δεδομένων του project. Κανόνας: policy as code. Ενέργεια Manager: οι κανόνες δεν είναι hardcoded. Φορτώνονται δυναμικά (από τη βάση ή από ConfigMap στο k3s), και ανάλογα με το profile ή το περιβάλλον εφαρμόζεται διαφορετικό σετ απαιτήσεων (π.χ. αυστηρό CIS για dev, πιο χαλαρό για test).
+
+22. A.8.32 Change management. Είναι ο έλεγχος του ποιος κάνει αλλαγές (GitOps). Εργαλεία: ArgoCD / Flux. Κανόνας: GitOps best practices. Ενέργεια Manager: ελέγχει τον User-Agent ή το ServiceAccount του αιτήματος. Αν κάποιος κάνει χειροκίνητο kubectl apply, το αίτημα μπλοκάρεται και επιτρέπονται αλλαγές μόνο από το εργαλείο GitOps.
+
+
+Tier 4: Χαμηλό επίπεδο και φυσικό hardware (εκτός σεναρίου αυτοματισμού)
+
+Αυτοί οι έλεγχοι είναι σημαντικοί για ένα data center, αλλά αφορούν διαχείριση συστημάτων και όχι το DevSecOps pipeline του project.
+
+23. A.8.14 Redundancy of information processing facilities: high availability στο Proxmox (πολλαπλά nodes).
+
+24. A.8.13 Information backup: backups των VMs του Proxmox.
+
+25. A.8.17 Clock synchronization: NTP στο Proxmox και στα nodes, ώστε τα logs να έχουν σωστή ώρα.
+
+26. A.8.18 Use of privileged utility programs: έλεγχος του ποιος έχει sudo στο Ubuntu VM που τρέχει το k3s.
+
+27. A.8.19 Installation of software on operational systems: ασφαλής χρήση του apt στο λειτουργικό των nodes.
+
+28. A.8.33 Test information: προστασία των δεδομένων που χρησιμοποιούνται σε δοκιμές.
+
+
+Tier 5: Εκτός πεδίου εφαρμογής
+
+Αυτοί οι έλεγχοι δεν σχετίζονται με το container hardening ή με τον Manager.
+
+29. A.8.10 Information deletion: ασφαλής διαγραφή δεδομένων και καταστροφή μέσων αποθήκευσης.
+
+30. A.8.11 Data masking: ανωνυμοποίηση προσωπικών δεδομένων σε βάσεις (π.χ. για GDPR).
+
+31. A.8.23 Web filtering: μπλοκάρισμα κακόβουλων ή ακατάλληλων ιστοτόπων για τους υπαλλήλους.
+
+32. A.8.1 User endpoint devices: ασφάλεια εταιρικών laptops και κινητών.
+
+33. A.8.34 Protection of information systems during audit testing: προστασία της λειτουργίας του συστήματος κατά τη διάρκεια ελέγχων ή penetration tests.
+
+34. A.8.30 Outsourced development: ασφάλεια και συμβάσεις όταν η ανάπτυξη κώδικα ανατίθεται σε τρίτους.
+
+Χρήση της ιεράρχησης: για ένα συμπαγές MVP, η υλοποίηση περιορίζεται στο Tier 1 (θέσεις 1 έως 7). Αν υπάρχει χρόνος, προστίθενται έλεγχοι από το Tier 2 (θέσεις 8 έως 13). Οι έλεγχοι από τη θέση 14 και κάτω αναφέρονται στο θεωρητικό μέρος ως εκτός πεδίου του αυτοματισμού, ή ως μελλοντικές επεκτάσεις για όσους του Tier 3 είναι υλοποιήσιμοι.
+
+
+12. Το CIS Benchmark ως Πηγή Κανόνων
+
+Καλύπτει το CIS όλες τις ανάγκες;
+
+Όχι πλήρως, αλλά καλύπτει τη μεγάλη πλειονότητα όσων αφορούν τη ρύθμιση (configuration). Τα CIS Benchmarks είναι το πιο διαδεδομένο σημείο αναφοράς για hardening, δηλαδή για το πώς ρυθμίζεται σωστά ένα Dockerfile, ένα Kubernetes manifest και ένα k3s node. Ο Manager βασίζεται σε αυτά για το auto-remediation των manifests.
+
+Το CIS δεν καλύπτει δύο πράγματα. Πρώτον, δεν ορίζει κανόνες για το αν ένα image έχει γνωστές ευπάθειες ή κακόβουλο κώδικα. Για τις ευπάθειες, το Trivy συμβουλεύεται βάσεις δεδομένων όπως η NVD (National Vulnerability Database) και τα security advisories των διανομών. Για το malware χρειάζεται ξεχωριστό εργαλείο. Δεύτερον, δεν ορίζει πώς υλοποιείται ο αλγόριθμος του Manager. Ορίζει τι πρέπει να ελέγξει.
+
+Υπάρχουν άλλες πηγές;
+
+Ναι. Οι κυριότερες εναλλακτικές για ασφάλεια cloud-native συστημάτων είναι οι εξής. Το NIST SP 800-190 (Application Container Security Guide) είναι πλήρες αλλά πιο θεωρητικό από το CIS. Τα DISA STIGs (Security Technical Implementation Guides) του Υπουργείου Άμυνας των ΗΠΑ είναι πολύ αυστηρά και συχνά επηρεάζουν τη λειτουργικότητα των εφαρμογών αν δεν εφαρμοστούν προσεκτικά. Το Kubernetes Hardening Guidance της NSA και της CISA είναι στοχευμένος οδηγός για το κλείδωμα ενός Kubernetes cluster.
+
+Γιατί επιλέγεται το CIS Benchmark;
+
+Οι λόγοι είναι αρχιτεκτονικοί και πρακτικοί. Πρώτον, είναι το de facto βιομηχανικό πρότυπο στον ιδιωτικό τομέα για hardening. Δεύτερον, είναι φιλικό προς την αυτοματοποίηση: οι συστάσεις του είναι διατυπωμένες ώστε να μεταφράζονται εύκολα σε προγραμματιστικούς ελέγχους, και γι' αυτό υπάρχουν ήδη εργαλεία που πατάνε πάνω του (kube-bench, πολιτικές για Kyverno και OPA). Τρίτον, υπάρχει τεκμηριωμένη αντιστοίχιση με το ISO, μέσω των CIS Controls v8 και της επίσημης αντιστοίχισής τους με το ISO/IEC 27001:2022, όπως περιγράφεται στην ενότητα 3. Με άλλες πηγές, η αντιστοίχιση με τα εδάφια του ISO θα έπρεπε να γίνει χωρίς επίσημη βάση. Τέταρτον, αποφεύγεται η διεύρυνση του πεδίου (scope creep): ο συνδυασμός CIS, NIST και STIGs θα έκανε το project μη διαχειρίσιμο, γιατί τα πρότυπα συχνά διαφέρουν ή συγκρούονται μεταξύ τους.
+
+Διατύπωση για τη μεθοδολογία της εργασίας:
+
+"Ενώ εξετάστηκαν εναλλακτικά πρότυπα όπως τα DISA STIGs, το NIST SP 800-190 και το Kubernetes Hardening Guidance των NSA/CISA, επιλέχθηκαν τα CIS Benchmarks ως η μοναδική πηγή αλήθειας (single source of truth) για το configuration management, λόγω της ευρείας αποδοχής τους στη βιομηχανία, της ευκολίας προγραμματιστικής ενσωμάτωσης και της τεκμηριωμένης αντιστοίχισής τους, μέσω των CIS Controls, με το ISO/IEC 27001:2022."
+
+
+13. Αιτιολόγηση της Επιλογής των Tiers 1 και 2 (13 Έλεγχοι)
+
+Πλήρης κάλυψη του cloud-native DevSecOps κύκλου ζωής. Οι 13 έλεγχοι καλύπτουν όλες τις φάσεις μιας containerized εφαρμογής σε Kubernetes. Στη φάση pre-deployment / build καλύπτονται το vulnerability και malware scanning των images (A.8.7, A.8.8) και το hardening των Dockerfiles (A.8.28). Στη φάση deployment / pipeline καλύπτονται το hardening και το CIS remediation των manifests (A.8.9), η πρόληψη διαρροής secrets (A.8.12) και η ενσωμάτωση στον κύκλο ανάπτυξης (A.8.25). Στη φάση runtime / cluster καλύπτονται η απομόνωση των workstations (A.8.31), οι network policies και ο διαχωρισμός δικτύων (A.8.20, A.8.22), ο περιορισμός προνομίων (A.8.2), τα resource limits (A.8.6), η καταγραφή (A.8.15) και η αρχιτεκτονική (A.8.27).
+
+Ακαδημαϊκή θεμελίωση μέσω SoA (ISO/IEC 27001 Clause 6.1.3). Η μη υλοποίηση των υπόλοιπων 21 τεχνολογικών ελέγχων δεν είναι παράλειψη, αλλά τεκμηριωμένη επιλογή. Μέσω της Δήλωσης Εφαρμοσιμότητας τεκμηριώνεται ότι οι υπόλοιποι έλεγχοι (π.χ. backups υποδομής, συγχρονισμός ώρας) είναι εκτός πεδίου για έναν αυτόματο μηχανισμό συμμόρφωσης λογισμικού.
+
+Βάθος υλοποίησης. Ένας μηχανισμός που όχι μόνο εντοπίζει παραβιάσεις (scan, validate) αλλά τις διορθώνει αυτόματα (remediate) για 13 διαφορετικούς ελέγχους είναι ένα πλήρες έργο λογισμικού. Η προσπάθεια κάλυψης 25 ή 34 ελέγχων θα οδηγούσε σε επιφανειακή καταγραφή χωρίς βάθος στον κώδικα.
+
+Αποφυγή scope creep. Η επέκταση στα Tiers 3 και 4 θα απαιτούσε γενικές εργασίες διαχείρισης υποδομής (NTP, backup agents, SSO) που δεν προσθέτουν ερευνητική αξία στο θέμα του compliance automation στο Kubernetes.
+
+Δομή στο κείμενο της εργασίας:
+
+Το core scope (MVP) περιλαμβάνει τους 7 ελέγχους του Tier 1 (A.8.7, A.8.9, A.8.12, A.8.25, A.8.27, A.8.28, A.8.31). Αυτός είναι ο πυρήνας του Manager και του pipeline.
+
+Το extended scope περιλαμβάνει τους 6 ελέγχους του Tier 2 (A.8.2, A.8.6, A.8.8, A.8.15, A.8.20, A.8.22). Αυτοί δείχνουν την επεκτασιμότητα του μηχανισμού σε network policies, RBAC και resource quotas.
+
+Το out of scope περιλαμβάνει όλους τους υπόλοιπους ελέγχους (Tiers 3 έως 5), με σύντομη αιτιολόγηση στη SoA ότι αφορούν διοικητικά μέτρα, την υποδομή του data center ή ενσωματώσεις πέρα από το αντικείμενο της εργασίας.
+
+
+14. Κατηγοριοποίηση των Ελέγχων ανά Τρόπο Υλοποίησης
+
+Οι έλεγχοι των Tiers 1, 2 και 3 είναι υλοποιήσιμοι, αλλά όχι όλοι με τον ίδιο τρόπο. Επειδή το project περιλαμβάνει τόσο το backend και το cluster (Proxmox, k3s, Node.js Manager) όσο και το Admin UI με το checklist, οι 22 έλεγχοι χωρίζονται σε τρεις τρόπους υλοποίησης.
+
+Πρώτη κατηγορία: έλεγχοι που υλοποιούνται απευθείας στον Manager (YAML parsing και auto-remediation). Ο Manager διαβάζει το manifest, ελέγχει αν ο κανόνας είναι ενεργός στο checklist του UI και διορθώνει το YAML. Εδώ ανήκουν ο A.8.9 (επιβολή κανόνων Pod security), ο A.8.28 (έλεγχος και inject του runAsUser: 1000), ο A.8.31 (έλεγχος και αλλαγή του target namespace ώστε να μην είναι το default), ο A.8.12 (inject του readOnlyRootFilesystem: true), ο A.8.20 (επιβεβαίωση υποστήριξης network policies), ο A.8.22 (inject default NetworkPolicy στο namespace), ο A.8.6 (inject resources.limits και requests), ο A.8.2 (αλλαγή του privileged: true σε false και drop capabilities), ο A.8.24 (επιβολή TLS στα Ingress manifests), ο A.8.21 (inject rate-limiting annotations στα Ingress) και ο A.8.26 (δυναμική ανάγνωση των κανόνων από το UI ή από ConfigMap).
+
+Δεύτερη κατηγορία: έλεγχοι που υλοποιούνται μέσω εξωτερικών εργαλείων ή APIs. Εδώ δεν πρόκειται για απλή επεξεργασία YAML: ο Manager καλεί εξωτερικά εργαλεία ή βιβλιοθήκες για να πάρει απόφαση. Εδώ ανήκουν ο A.8.7 (κλήση malware scanner στο image), ο A.8.8 (έλεγχος CVEs μέσω Trivy και μπλοκάρισμα αν υπάρχει CRITICAL), ο A.8.15 (εγγραφή JSON logs για κάθε auto-remediation, που εμφανίζονται στο UI), ο A.8.16 (inject annotations για Prometheus/Grafana ή εμφάνιση logs στο UI), ο A.8.29 (έλεγχος για metadata του CI/CD pipeline σε labels ή annotations), ο A.8.4 (έλεγχος ψηφιακής υπογραφής του image μέσω Cosign/Sigstore) και ο A.8.32 (αποδοχή deployments μόνο αν προέρχονται από εργαλείο GitOps, π.χ. ArgoCD ή Flux).
+
+Τρίτη κατηγορία: έλεγχοι που υλοποιούνται στην αρχιτεκτονική και στην υποδομή. Αυτούς δεν τους επηρεάζει το checklist του UI την ώρα του deployment. Ρυθμίζονται εξαρχής στο Proxmox, στο k3s και στον κώδικα. Εδώ ανήκουν ο A.8.25 (η ίδια η αρχιτεκτονική του Manager ως shift-left ελεγκτή πριν το deployment), ο A.8.27 (η ασφαλής παραμετροποίηση των k3s nodes στο Proxmox), ο A.8.5 (αυθεντικοποίηση με JWT ή API keys για την πρόσβαση στο Admin UI και στο API του Manager) και ο A.8.3 (αυστηρά δικαιώματα ServiceAccount και RBAC για τον ίδιο τον Manager, ώστε να μην έχει πλήρη πρόσβαση σε όλο το cluster).
+
+
+15. Πλάνο Υλοποίησης
+
+Η υλοποίηση γίνεται σταδιακά.
+
+Βήμα 1 (MVP, Tier 1): στήσιμο Proxmox και k3s, και υλοποίηση στον Manager του auto-remediation για τους βασικούς ελέγχους της πρώτης κατηγορίας, μαζί με την ενσωμάτωση των scanners της δεύτερης κατηγορίας (Trivy και malware scanner).
+
+Βήμα 2 (ενσωμάτωση UI): δημιουργία του UI με τους διακόπτες ON/OFF, των οποίων οι ρυθμίσεις αποθηκεύονται στη βάση και διαβάζονται από τον Manager.
+
+Βήμα 3 (επεκτάσεις, Tiers 2 και 3): προσθήκη επιπλέον κανόνων στον Manager και αντίστοιχων διακοπτών στο UI. Επειδή οι κανόνες είναι δομημένοι ως ανεξάρτητες μονάδες ελέγχου και διόρθωσης, κάθε νέος έλεγχος προστίθεται χωρίς αλλαγή στη ροή του pipeline.
+
+Με αυτή τη δομή, κάθε έλεγχος του project συνδέεται με σαφή τρόπο από το πρότυπο (ISO/IEC 27001/27002 και τα εξειδικευμένα 27017, 27036, 27034), στην τεχνική σύσταση (CIS Benchmark ή εργαλείο), και τέλος στον κώδικα του Manager, στο cluster και στο UI.

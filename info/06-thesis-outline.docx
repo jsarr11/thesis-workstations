@@ -1,0 +1,131 @@
+Τίτλος: «Έλεγχος Συμμόρφωσης (Compliance) και Αυτόματη Αποκατάσταση σε On-Demand Cloud-Native Workstations»
+
+
+Πίνακας Περιεχομένων
+
+
+1. Εισαγωγή (Introduction)
+
+1.1. Περιοχή Έρευνας και Πλαίσιο (DevSecOps, Cloud-Native Security και On-Demand Workstations)
+1.2. Διατύπωση του Προβλήματος (Security Drift, Unhardened Containers, Manual Compliance)
+1.3. Στόχος και Αντικείμενο της Διπλωματικής Εργασίας
+1.4. Μεθοδολογική Προσέγγιση και Πεδίο Εφαρμογής (Scope Statement / Technological Controls ISO 27002 Annex A.8)
+1.5. Δομή της Εργασίας
+
+
+2. Θεωρητικό Υπόβαθρο και Σχετική Έρευνα (Background & State of the Art)
+
+2.1. Cloud-Native Υποδομές και Containerization (Docker, Kubernetes, k3s, containerd)
+2.2. On-Demand Development Environments (OpenVSCode Server vs Gitpod vs Codespaces)
+2.3. Πρότυπα Ασφαλείας και Governance (ISO/IEC 27001, 27002, 27017, 27036, 27034 και CIS Benchmarks)
+2.4. Μηχανισμοί Policy Enforcement και Image Scanning (Trivy API, Admission Control)
+2.5. Μοντέλο Υβριδικής και Cloud Υποδομής (On-Premises Hypervisors vs Managed Kubernetes Services)
+
+
+3. Πλαίσιο Κανόνων Συμμόρφωσης και Μοντέλο Πολιτικών Ασφαλείας (Policy Set & Enforcement Rules)
+
+3.1. Ορισμός του Policy Set: Σύνδεση ISO 27001 Annex A.8 με CIS Benchmarks (Mapping Framework)
+3.2. Κατηγοριοποίηση Κανόνων ανά Στάδιο Επιβολής (Multi-Tier Policy Classification)
+3.2.1. Tier 1: Βασικοί Κανόνες Ασφαλείας Manifest και Runtime (Non-Root User, Resource Quotas, Read-Only Root FS, Capabilities Drop, Network Isolation)
+3.2.2. Tier 2: Κανόνες Supply Chain και Image Scanning (Trivy Scan Thresholds, 0 Critical/High CVEs)
+3.2.3. Tier 3: Κανόνες Δικτύου, Μνήμης και Persistence (Network Policies, EmptyDir Volumes)
+3.2.4. Tier 4: Κανόνες Υπογραφών και Provenance (Cosign/Sigstore Image Signatures)
+3.2.5. Tier 5: Κανόνες Αρχιτεκτονικής και Διαχείρισης Αλλαγών (Secure SDLC, RBAC Least Privilege)
+3.3. Δήλωση Εφαρμοσιμότητας (Statement of Applicability, SoA Matrix)
+3.4. Εξειδίκευση Κανόνων ανά Workstation Profile (Developer, Data Analyst, DevOps)
+
+
+4. Αρχιτεκτονική Συστήματος και Cloud-Ready Σχεδιασμός (System Architecture & Cloud Readiness)
+
+4.1. Συνολική Αρχιτεκτονική Υποδομής (Proxmox Lab, k3s Cluster, Manager Engine, Flutter UI)
+4.2. Αρχιτεκτονική Workstation Profiles και Multi-Stage Images
+4.2.1. Το Κοινό Base Image (Dockerfile.base, Ubuntu Minimal και OpenVSCode Server)
+4.2.2. Τα 3 Εξειδικευμένα Profiles (Dockerfile.developer, Dockerfile.data-analyst, Dockerfile.devops)
+4.2.3. Αιτιολογία Επιλογής Multi-Stage (Least Privilege και Attack Surface Reduction)
+4.3. Στρατηγική Αποθήκευσης Images (Local k3s Registry / Docker Registry / Containerd Import vs GHCR/Cloud Registries)
+4.4. Αρχιτεκτονική Cloud-Readiness και Provider-Agnostic Design (Πώς η χρήση Kubernetes και OCI Containers καθιστά το σύστημα ανεξάρτητο υποδομής)
+
+
+5. Υλοποίηση Συστήματος και Μετάβαση στο Cloud (Implementation & Cloud Migration)
+
+5.1. Ανάπτυξη του Manager (Glue Layer API) και Ενορχήστρωση
+5.2. Ο Κύκλος Auto-Remediation σε 4 Στάδια
+5.2.1. Stage 1: Image Scanning via Trivy API
+5.2.2. Stage 2: Dynamic Manifest Remediation (YAML AST Parsing και Security Context Injection)
+5.2.3. Stage 3: Admission Control και Cluster Deployment
+5.2.4. Stage 4: Bootstrap Verification και JSON Audit Logging
+5.3. Διεπαφή Χρήστη και Admin Checklist (Flutter Web Frontend)
+5.4. Στρατηγική και Υλοποίηση Μετάβασης στο Cloud (Cloud Migration Strategy & Deployment)
+5.4.1. Αρχική Ανάπτυξη στο Proxmox VM (On-Premises Environment)
+5.4.2. Διαδικασία Migration σε Managed Cloud Kubernetes (π.χ. AWS EKS / GCP GKE / Civo K8s)
+5.4.3. Προσαρμογή Ingress, Managed Container Registries (ECR/GCR) και Secrets Management στο Cloud
+5.4.4. Συγκριτική Αξιολόγηση Λειτουργίας: On-Premises (Proxmox/k3s) vs Cloud Managed Kubernetes
+
+
+6. Δοκιμές, Αξιολόγηση και Αποτελέσματα (Evaluation & Experimental Results)
+
+6.1. Σενάρια Δοκιμών Παραβίασης Πολιτικών (Non-Compliant Manifests και Unhardened Images)
+6.2. Επαλήθευση Αυτόματης Αποκατάστασης (Before & After Auto-Remediation Verification)
+6.3. Μετρήσεις Επιδόσεων και Overhead (Provisioning Time με και χωρίς Auto-Remediation σε On-Premises και Cloud)
+6.4. Τεκμήρια Συμμόρφωσης (Compliance Evidence / Structure of JSON Audit Logs)
+
+
+7. Συμπεράσματα και Μελλοντικές Επεκτάσεις (Conclusions & Future Work)
+
+7.1. Ανακεφαλαίωση και Σύνοψη Αποτελεσμάτων
+7.2. Ακαδημαϊκή και Τεχνική Συνεισφορά
+7.3. Περιορισμοί του Συστήματος
+7.4. Μελλοντικές Επεκτάσεις (Continuous Runtime Drift Detection via eBPF/Falco, Multi-Cloud Compliance Orchestration)
+
+
+Βιβλιογραφία (References)
+
+ISO/IEC Standards, CIS Benchmarks, NIST Guidelines, Kubernetes και Cloud Documentation.
+
+
+Παραρτήματα (Appendices)
+
+Παράρτημα Α: Αναλυτικός Πίνακας Mapping (ISO 27001 Annex A.8 → ISO 27017/36/34 → CIS K8s Controls)
+Παράρτημα Β: Δείγματα Kubernetes Manifests (Πριν και Μετά το Auto-Remediation)
+Παράρτημα Γ: Δείγμα Παραγόμενου JSON Audit Log
+Παράρτημα Δ: Kubernetes Manifests και Terraform/Helm Scripts για το Cloud Deployment
+
+
+
+Σημειώσεις
+
+
+Γιατί ο Manager να είναι σε Node.js;
+
+Δεν είναι υποχρεωτικό να είναι σε Node.js. Είναι μια φυσική επιλογή, αλλά μπορεί να χρησιμοποιηθεί και άλλη γλώσσα, όπως Go ή Python.
+
+Ο πρώτος λόγος που προτείνεται το Node.js είναι ότι ο Manager κάνει κυρίως I/O και ασύγχρονες λειτουργίες, όχι βαριούς υπολογισμούς. Κατά το μεγαλύτερο μέρος, δέχεται HTTP request από το UI, κάνει HTTP call στο API του Trivy, διαβάζει και γράφει YAML/JSON (JSON AST parsing) και στέλνει HTTP/gRPC requests στο Kubernetes API (kube-apiserver). Λόγω του event loop, το Node.js είναι από τα πιο γρήγορα και ελαφριά εργαλεία για αυτή ακριβώς τη δουλειά.
+
+Ο δεύτερος λόγος είναι το οικοσύστημα για Kubernetes και η διαχείριση YAML/JSON. Το JSON είναι η φυσική μορφή δεδομένων της JavaScript, και η μετατροπή από και προς YAML γίνεται με ελάχιστες γραμμές κώδικα (π.χ. με τα πακέτα @kubernetes/client-node και yaml).
+
+Ο τρίτος λόγος είναι η ταχύτητα ανάπτυξης για το MVP. Γράφεται γρήγορα, έχει μεγάλο οικοσύστημα βιβλιοθηκών (Express, Fastify) και επιτρέπει το στήσιμο του API σε λίγες ώρες.
+
+Εναλλακτικά, η Go είναι η γλώσσα στην οποία είναι γραμμένο το ίδιο το Kubernetes και η πιο διαδεδομένη επιλογή στη βιομηχανία για Kubernetes operators και webhooks. Έχει πολύ μικρή κατανάλωση μνήμης, αλλά απαιτεί περισσότερο boilerplate κώδικα. Η Python είναι πολύ εύκολη για prototyping και για γρήγορα scripts με τον Kubernetes Python client, αλλά είναι ελαφρώς πιο αργή σε ασύγχρονο I/O σε σχέση με Node.js και Go.
+
+Συμπέρασμα: αν το Node.js είναι οικείο, παραμένει. Η αλλαγή σε Go ή Python είναι δυνατή χωρίς πρόβλημα για τη διπλωματική.
+
+
+Πού μπαίνει η μεταφορά στο Cloud;
+
+Η μετάβαση στο cloud (cloud migration / deployment) πρέπει να αναφέρεται στη διπλωματική, γιατί είναι η φυσική εξέλιξη του project.
+
+Στο χρονοδιάγραμμα, η υλοποίηση ξεκινά στο Proxmox lab (on-premises) για λόγους κόστους, πλήρους ελέγχου και ταχύτητας ανάπτυξης, ενώ ο τελικός στόχος είναι το deployment σε cloud πάροχο (π.χ. AWS EKS, GCP GKE ή Civo/DigitalOcean Kubernetes).
+
+Στη δομή των κεφαλαίων, μπορεί να ενταχθεί ως εξής: στο Κεφάλαιο 4 (Υποδομή) με την υποενότητα 4.1.2, Cloud Readiness και Infrastructure Independence (k3s local vs AWS/GCP managed Kubernetes), στο Κεφάλαιο 5 (Υλοποίηση και Deployment) με την ενότητα 5.4, Cloud Migration Strategy και Deployment (μετάβαση από το Proxmox lab σε cloud Kubernetes cluster), και στο Κεφάλαιο 7 (Μελλοντικές Επεκτάσεις) με την ενότητα 7.3, Multi-Cloud και Hybrid Cloud Compliance Orchestration.
+
+Η αρχιτεκτονική είναι ήδη cloud-ready. Επειδή ο σχεδιασμός βασίζεται σε Kubernetes (k3s) και σε standard Docker/OCI containers, ο κώδικας του Manager είναι cloud-agnostic και δεν εξαρτάται από το hardware του Proxmox. Αν το manifest του Manager εφαρμοστεί με kubectl apply σε ένα cluster στο AWS (EKS) ή στο Google Cloud (GKE), θα τρέξει με τον ίδιο τρόπο χωρίς αλλαγές στον κώδικα.
+
+
+
+Σημείωση (15/10/2026): Compliance Engine
+
+Ο μηχανισμός συμμόρφωσης υλοποιείται ως ξεχωριστό, αυτόνομο εργαλείο (Compliance Engine), ανεξάρτητο από την πλατφόρμα των workstations. Στη δομή της εργασίας:
+- Στο κεφάλαιο 4 (Αρχιτεκτονική) η πλατφόρμα και το Compliance Engine περιγράφονται ως δύο διακριτά συστήματα που επικοινωνούν μέσω API και admission webhook.
+- Στο κεφάλαιο της υλοποίησης το Compliance Engine είναι η κύρια συνεισφορά, με τους τρόπους χρήσης του (API, webhook, CLI, UI).
+- Στην αξιολόγηση μετρώνται οι παραβάσεις πριν και μετά το εργαλείο, και η μεταφερσιμότητά του (Integration Guide).
+Αναλυτικά: 08-workflow.docx, Step 17.
