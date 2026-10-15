@@ -187,3 +187,12 @@ Tier 1
         → Forbidden: violates PodSecurity "baseline:latest": host namespaces (hostPID=true)
     Επανεξέταση: kube-bench έτρεξε, cluster-logs στο Audit Trail.
 ΚΑΤΑΣΤΑΣΗ A.8.9: ΟΛΟΚΛΗΡΩΘΗΚΕ (5/5 απαιτήσεις του ISO, δύο γραμμές άμυνας, δοκιμασμένο στο VM).
+
+
+Δοκιμή στο VM (15/10/2026 18:13, 08-workflow Step 37): cluster review με το κουμπί και μετά νέο workstation: ΕΠΙΤΥΧΗΣ
+    workstation-tester1-6508, report 1b2a570f…: ALLOW, CIS-5.2.6 REMEDIATED, unknown_rules: []
+    cluster_review: scan 3acce865…, MANUAL από τον admin, age_hours 0, 31 PASS / 28 FAIL / 57 WARN / 14 INFO, PSA compliant
+    Με αυτό ολοκληρώθηκαν όλες οι δοκιμές του A.8.9 στο VM. Μένουν μόνο τα screenshots και το επίσημο mapping CIS → ISO.
+Ακριβέστερη αιτία των ψευδώς θετικών (για τον A.8.27):
+    - Το journalctl του host είναι προσαρτημένο στο Job, αλλά δεν τρέχει στο container του kube-bench (λείπουν βιβλιοθήκες).
+    - Το 5.1.1 βγαίνει FAIL γιατί ο default ServiceAccount του compliance-system δεν μπορεί να διαβάσει clusterrolebindings.
