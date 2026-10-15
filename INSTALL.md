@@ -478,8 +478,9 @@ pm2 logs manager                # τα logs του Manager ([LOG] Step 1..5); Ct
 | «Πολλές αποτυχημένες προσπάθειες» στο login | 5 λάθος κωδικοί σε 15 λεπτά (προστασία από brute-force) | περίμενε 15 λεπτά ή `pm2 restart manager` |
 | Ο Manager δεν ξεκινά: `Database migrations failed` | σφάλμα στο σχήμα της βάσης | `pm2 logs manager` για τη λεπτομέρεια. Τα migrations βρίσκονται στο `database/migrations/` |
 | Κάθε νέο workstation βγαίνει «⚠️ Απέτυχε» και στο Audit Trail υπάρχει `COMPLIANCE-ENGINE` / `FAILED` | το Compliance Engine δεν τρέχει ή το API key διαφέρει (fail-closed: χωρίς έλεγχο δεν γίνεται deploy) | `pm2 status`, `pm2 logs compliance-engine`, `curl -s http://localhost:5100/health`. Το `COMPLIANCE_ENGINE_API_KEY` του `manager/.env` πρέπει να είναι ίδιο με το `API_KEY` του `compliance-engine/.env`· μετά `bash deploy.sh` |
-| Workstation «⚠️ Απέτυχε» με «Μπλοκαρίστηκε από τον έλεγχο συμμόρφωσης» | παράβαση που δεν διορθώνεται αυτόματα (π.χ. hostPath) | κατέβασε το 📄 workspace-logs: γράφει ποιος έλεγχος (CIS) απέτυχε και γιατί |
+| Workstation «⚠️ Απέτυχε» με «Μπλοκαρίστηκε από τον έλεγχο συμμόρφωσης» | παράβαση που δεν διορθώνεται αυτόματα (π.χ. hostPath) | ο admin κατεβάζει το 📄 workspace-logs (καρτέλα Workstations ή Audit Trail, γραμμή `COMPLIANCE-GATE`): γράφει ποιος έλεγχος (CIS) απέτυχε και γιατί |
 | Το VS Code δεν ανοίγει με το link | το link άνοιξε χωρίς το `tkn=` ή το workstation έληξε | άνοιξέ το ξανά από το portal («Τα workstations μου») |
+| «Forbidden» σε ένα VS Code όταν είναι ανοιχτά δύο workstations | workstation παλαιότερο του Step 24: όλα μοιράζονταν το ίδιο cookie token στην ίδια IP | άνοιξέ το ξανά από το link του portal. Τα νέα workstations τρέχουν σε δικό τους path (`/<όνομα-pod>/`) και δεν συγκρούονται |
 
 ---
 

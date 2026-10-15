@@ -29,7 +29,6 @@
         .badge.off { background: #334155; color: #94a3b8; }
         .btn-small { border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; background: #b91c1c; }
         .open-link { color: #34d399; font-weight: bold; }
-        .report-link { color: #38bdf8; font-size: 0.9em; }
         .hidden { display: none; }
     </style>
 </head>
@@ -71,7 +70,6 @@
 
         <div class="card">
             <h2>📋 Τα workstations μου</h2>
-            <label style="font-weight: normal;"><input type="checkbox" id="showHistory" style="width: auto;" onchange="renderMine()"> Εμφάνιση ιστορικού (εκτός από τα ενεργά, φαίνονται πάντα οι απορρίψεις, αποτυχίες και λήξεις του τελευταίου 24ώρου)</label>
             <table>
                 <thead>
                     <tr><th>Αίτημα</th><th>Profile</th><th>Κατάσταση</th><th>Λήξη συνεδρίας</th><th>Πρόσβαση</th><th>Ενέργειες</th></tr>
@@ -82,7 +80,6 @@
     </div>
 
     <script>
-        const OPEN = ['WAITING_APPROVAL', 'PENDING', 'DEPLOYING', 'RUNNING'];
         const STATUS_LABEL = {
             WAITING_APPROVAL: ['⏳ Αναμονή έγκρισης', 'warn'],
             PENDING: ['🚀 Δημιουργία…', 'warn'],
@@ -133,23 +130,13 @@
             select.replaceChildren(...profiles.map(p => new Option(`${p.display_name} (${p.name})`, p.id)));
         }
 
-        // Απορρίψεις/αποτυχίες/λήξεις των τελευταίων 24 ωρών φαίνονται πάντα, ώστε ο χρήστης να ενημερώνεται αμέσως.
-        const RECENT_OUTCOMES = ['REJECTED', 'FAILED', 'EXPIRED'];
-        const isRecentOutcome = (w) => RECENT_OUTCOMES.includes(w.status)
-            && w.terminated_at && Date.now() - new Date(w.terminated_at).getTime() < 24 * 3600 * 1000;
-
+        // Φαίνονται πάντα όλα τα workstations του χρήστη (και τα τερματισμένα), τα νεότερα πρώτα· κανένα δεν διαγράφεται.
         function renderMine() {
-            const showHistory = document.getElementById('showHistory').checked;
-            const rows = showHistory ? mine : mine.filter(w => OPEN.includes(w.status) || isRecentOutcome(w));
-            document.getElementById('mineTable').innerHTML = rows.map(w => {
+            document.getElementById('mineTable').innerHTML = mine.map(w => {
                 const [label, cls] = STATUS_LABEL[w.status] || [w.status, ''];
                 const note = w.status === 'REJECTED' && w.review_note ? `<br><small>Αιτιολογία: ${esc(w.review_note)}</small>` : '';
-                const vscode = w.access_link ? `<a class="open-link" href="${esc(w.access_link)}" target="_blank" rel="noopener">🔗 Άνοιγμα VS Code</a>` : '';
-                const report = w.has_compliance_report
-                    ? `<a class="report-link" href="/api/workstations/${encodeURIComponent(w.id)}/compliance-report" download title="Compliance report (ISO 27001 / CIS)">📄 workspace-logs</a>`
-                    : '';
-                const access = [vscode, report].filter(Boolean).join('<br>') || '-';
-                const denied = w.compliance_decision === 'DENY' ? '<br><small>Μπλοκαρίστηκε από τον έλεγχο συμμόρφωσης (δες το workspace-logs)</small>' : '';
+                const access = w.access_link ? `<a class="open-link" href="${esc(w.access_link)}" target="_blank" rel="noopener">🔗 Άνοιγμα VS Code</a>` : '-';
+                const denied = w.compliance_decision === 'DENY' ? '<br><small>Μπλοκαρίστηκε από τον έλεγχο συμμόρφωσης. Επικοινώνησε με τον διαχειριστή.</small>' : '';
                 const action = w.status === 'WAITING_APPROVAL'
                     ? `<button class="btn-small" onclick="terminate('${esc(w.id)}', this, 'Ακύρωση του αιτήματος;')">Ακύρωση</button>`
                     : ['PENDING', 'DEPLOYING', 'RUNNING'].includes(w.status)
@@ -163,7 +150,7 @@
                     <td>${access}</td>
                     <td>${action}</td>
                 </tr>`;
-            }).join('') || `<tr><td colspan="6">${showHistory ? 'Δεν υπάρχουν workstations.' : 'Δεν έχεις ενεργά workstations ή αιτήματα.'}</td></tr>`;
+            }).join('') || '<tr><td colspan="6">Δεν έχεις κάνει ακόμα αίτημα για workstation.</td></tr>';
         }
 
         async function loadMine() {

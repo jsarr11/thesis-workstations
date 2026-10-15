@@ -108,7 +108,8 @@ curl http://127.0.0.1:5100/health
 - [x] Stage 2 του pipeline (`manager/workstations.js`): οι κανόνες του profile στέλνονται στο `/evaluate`, γίνεται deploy το διορθωμένο manifest, και σε `DENY` δεν δημιουργείται τίποτα στο k3s.
 - [x] Migration `database/migrations/002_compliance_engine.sql`: ο κανόνας A.8.9 στο Policy Checklist ανά profile (προεπιλογή ON), `policy_rules.updated_by`, πίνακας `compliance_reports` (μόνο ID, SHA-256, απόφαση).
 - [x] Audit της πλατφόρμας: μία εγγραφή `COMPLIANCE` ανά κανόνα, `COMPLIANCE-GATE` σε απόρριψη, `COMPLIANCE-ENGINE` όταν το εργαλείο δεν απαντά, `REPORT-DOWNLOAD` σε κάθε λήψη.
-- [x] UI: κουμπί «📄 workspace-logs» δίπλα στο link του VS Code (portal και admin) → `GET /api/workstations/:id/compliance-report`, μόνο για τον κάτοχο και τον admin.
+- [x] UI: κουμπί «📄 workspace-logs» μόνο για τον admin, στην καρτέλα Workstations και στο Audit Trail (γραμμή `DEPLOY` ή `COMPLIANCE-GATE`), ώστε το report να κατεβαίνει και μετά τον τερματισμό → `GET /api/workstations/:id/compliance-report`. Ο developer δεν βλέπει το report.
+- [x] Policy Checklist με ένα υπο-tab ανά profile.
 - [ ] Αφαίρεση της καρτέλας «Policies» από το `/admin`, όταν υπάρξει το UI του εργαλείου.
 - [ ] Workstations σε δικό τους namespace αντί για `default` (A.8.31).
 - [ ] Δήλωση του ServiceAccount του Manager ως εγκεκριμένου (A.8.32).
