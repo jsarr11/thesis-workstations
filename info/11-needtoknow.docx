@@ -257,3 +257,17 @@ Fail-closed (τι σημαίνει και πού είναι):
       εντολή ελέγχου απέτυχε να τρέξει, και ο έλεγχος στον server (journalctl, anonymous-auth=false) δείχνει τη σωστή τιμή.
     - Η δοκιμή "κουμπί → νέο workstation" έγινε και στο VM (workstation-tester1-6508): το workspace-logs περιέχει
       το scan του κουμπιού με age_hours 0.
+
+
+Προσθήκη (Step 39): πώς συνδέεται το CIS με το ISO (επίσημα, όχι δική μας εκτίμηση)
+    - Το CIS δημοσιεύει ένα Excel που λέει, για κάθε safeguard των CIS Controls, σε ποιο control του ISO 27001:2022 αντιστοιχεί
+      και με ποια σχέση: equivalent (ίδιο πράγμα), superset (το safeguard είναι ευρύτερο), subset (το safeguard καλύπτει μέρος
+      του control). Το αρχείο είναι στο info/CIS-27001-Mapping.
+    - Για τον A.8.9: safeguards 4.1, 4.2, 4.3, 4.7, 4.8, όλα subset. Το 4.1 ("secure configuration process") είναι αυτό που
+      υλοποιούμε. Το CIS Kubernetes Benchmark (5.2.x) δίνει τις ακριβείς ρυθμίσεις για το 4.1 σε Kubernetes.
+    - Άρα η αλυσίδα είναι: ISO A.8.9 → CIS Controls safeguard 4.1 (επίσημο mapping) → CIS Kubernetes Benchmark 5.2.x
+      (ακριβής ρύθμιση) → κανόνας του engine.
+    - Πιθανή ερώτηση: "Γιατί subset;" Απάντηση: το ISO control είναι ευρύ (όλες οι ρυθμίσεις, όλος ο κύκλος ζωής), ενώ κάθε
+      safeguard ζητά ένα συγκεκριμένο πράγμα. Γι' αυτό χρειάζονται πολλά safeguards για ένα control.
+    - Πιθανή ερώτηση: "Γιατί v8 και όχι v8.1;" Απάντηση: το επίσημο mapping προς το ISO 27001:2022 που χρησιμοποιήθηκε είναι
+      αυτό των Controls v8 (Ιανουάριος 2023).

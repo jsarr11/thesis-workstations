@@ -196,3 +196,16 @@ Tier 1
 Ακριβέστερη αιτία των ψευδώς θετικών (για τον A.8.27):
     - Το journalctl του host είναι προσαρτημένο στο Job, αλλά δεν τρέχει στο container του kube-bench (λείπουν βιβλιοθήκες).
     - Το 5.1.1 βγαίνει FAIL γιατί ο default ServiceAccount του compliance-system δεν μπορεί να διαβάσει clusterrolebindings.
+
+
+Επίσημο mapping CIS Controls v8 → ISO/IEC 27001:2022 (15/10/2026 18:24, 08-workflow Step 39)
+Πηγή: info/CIS-27001-Mapping (CIS, ενημέρωση Ιανουαρίου 2023). Είναι για τα Controls v8, όχι v8.1.
+A.8.9 → 4.1, 4.2, 4.3, 4.7, 4.8 (όλα "Subset")
+    4.1 Establish and Maintain a Secure Configuration Process            → αυτό αφορά τους κανόνες μας (CIS Benchmark 5.2.x)
+    4.7 Manage Default Accounts on Enterprise Assets and Software        → images (π.χ. ο προεπιλεγμένος χρήστης με sudo NOPASSWD)
+    4.8 Uninstall or Disable Unnecessary Services on Enterprise Assets   → images (περιττά πακέτα και υπηρεσίες)
+    4.2 (network infrastructure) και 4.3 (session locking σε συσκευές)  → εκτός εύρους της πλατφόρμας
+Για τους επόμενους κανόνες:
+    A.8.28 → 16.1 (superset), 16.9, 16.12
+    A.8.2  → 4.7, 5.4, 6.5, 6.8, 12.8
+    A.8.24 και A.8.32 → δεν αντιστοιχίζονται σε κανένα safeguard
