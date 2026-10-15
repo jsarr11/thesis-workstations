@@ -102,6 +102,9 @@ All profiles inherit from `workstation-base:v1` (OpenVSCode Server, non-root `US
 .
 ├── .github/workflows/deploy.yml   # CD: runs deploy.sh on the self-hosted runner on every push to main
 ├── INSTALL.md                     # step-by-step installation guide (Greek)
+├── compliance-engine/             # Phase 2: standalone compliance & auto-remediation tool (design stage)
+│   ├── about.md                   # what it is, usage modes, rule coverage, boundaries
+│   └── integration-instructions.md # what a platform must do to use it (draft)
 ├── deploy.sh                      # pull → npm ci → pm2 restart → build/import missing images → health check
 ├── deploy/runner-sudoers          # least-privilege sudo rule for the CI runner (docker + k3s only)
 ├── database/
@@ -223,7 +226,7 @@ Configuration (`manager/.env`): `SESSION_TTL_HOURS` (default `10`), `REPORT_TIME
 - [x] **UI** — developer portal and admin dashboard with daily audit export
 - [x] **CI/CD** — self-hosted runner, fail-fast deploy script, automatic image rebuild/import, health check
 - [x] **Operations** — nightly database backups and audit archives, least-privilege runner permissions
-- [ ] **Phase 2 — compliance engine**
+- [ ] **Phase 2 — compliance engine** — built as a standalone, portable tool in [`compliance-engine/`](compliance-engine/about.md) (API, admission webhook, CLI, own UI); the platform only calls it before deploying
   - [ ] Stage 1: image scanning with Trivy (0 Critical / 0 High gate)
   - [ ] Stage 2: manifest validation & auto-remediation (securityContext, non-root, read-only root FS, dropped capabilities, resource limits, NetworkPolicies)
   - [ ] Stage 3: admission gate (Kyverno or OPA Gatekeeper)
