@@ -159,3 +159,13 @@ To-Do: Κλείσιμο του DevOps Κομματιού
 ☐ Push (από εμένα) και δοκιμή στο VM (08-workflow, Step 25.4), μαζί με τη δοκιμή του Step 24.3
 ☐ Όταν υλοποιηθούν οι A.8.28 και A.8.2: enforce: restricted στο namespace workstations
 ☐ A.8.3: δικός ServiceAccount για το Compliance Engine (αντί για το kubeconfig του VM)
+
+
+Ενημέρωση 15/10/2026 13:58
+☑ Push και δοκιμή στο VM της ολοκλήρωσης του A.8.9 (08-workflow, Step 26): PSA απορρίπτει hostPID, kube-bench και cluster-logs λειτουργούν
+☑ ΚΑΝΟΝΑΣ A.8.9: ΟΛΟΚΛΗΡΩΘΗΚΕ
+☐ Καταγραφή της σύνοψης του πρώτου kube-bench (PASS / FAIL / WARN) και ανάλυση των FAIL (αφορούν κυρίως τον A.8.27)
+☐ Επόμενος κανόνας: A.8.28
+
+☑ Δοκιμή του Step 24.3: δύο workstations ταυτόχρονα, χωρίς "Forbidden" (15/10/2026 13:59)
+☐ A.8.27: ανάλυση των 28 FAIL του kube-bench (πρώτο scan: 31 PASS / 28 FAIL / 57 WARN), επιβεβαίωση ψευδώς θετικών (journal του k3s στο Job) και διόρθωση των πραγματικών
