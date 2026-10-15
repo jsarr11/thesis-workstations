@@ -34,7 +34,17 @@ function selectionFor(ruleId, selections) {
   };
 }
 
-function evaluate({ manifest, rules: selections = [], context = {} }) {
+// Ενότητα "Έλεγχος cluster" του report: το τελευταίο review του cluster (kube-bench + Pod Security Admission)
+// πριν από την αξιολόγηση, αυτούσιο, με το SHA-256 του αρχείου cluster-logs από το οποίο προέρχεται.
+function clusterReviewSection(latest, now) {
+  if (!latest) {
+    return { available: false, note: 'No cluster review (kube-bench) has been run yet' };
+  }
+  const ageHours = Math.round(((now - new Date(latest.report.generated_at)) / 3600000) * 10) / 10;
+  return { available: true, cluster_report_sha256: latest.sha256, age_hours: ageHours, ...latest.report };
+}
+
+function evaluate({ manifest, rules: selections = [], context = {}, clusterReview = null }) {
   const working = structuredClone(manifest);
   const spec = getPodSpec(working);
   const manifestBefore = sha256(canonicalJson(manifest));
@@ -114,6 +124,7 @@ function evaluate({ manifest, rules: selections = [], context = {} }) {
       sha256_after: sha256(canonicalJson(working)),
       changed: count(CHECK.REMEDIATED) > 0,
     },
+    cluster_review: clusterReviewSection(clusterReview, new Date()),
     ruleset: RULES.map(describeRule),
   };
 

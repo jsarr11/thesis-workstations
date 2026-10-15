@@ -2,7 +2,7 @@
 
 > Αυτόνομο εργαλείο ελέγχου συμμόρφωσης (compliance) και αυτόματης αποκατάστασης (auto-remediation) για workloads σε Kubernetes, με βάση το ISO/IEC 27001:2022 Annex A.8 και τα CIS Benchmarks.
 
-**Κατάσταση (v0.1.0):** λειτουργεί το API (`/evaluate`) με τον πρώτο κανόνα, **A.8.9 Configuration management**. Η πλατφόρμα της διπλωματικής το χρησιμοποιεί σε κάθε deploy.
+**Κατάσταση (v0.1.0):** λειτουργεί το API (`/evaluate`) με τον πρώτο κανόνα, **A.8.9 Configuration management**, μαζί με την επανεξέταση του cluster (`/cluster/scan`: kube-bench + Pod Security Admission). Η πλατφόρμα της διπλωματικής το χρησιμοποιεί σε κάθε deploy.
 
 ---
 
@@ -25,6 +25,7 @@
 ```
                       ┌──────────── Compliance Engine ─────────────────────────────────────┐
 Πλατφόρμα ───────────► POST /evaluate     έλεγχος + διόρθωση πριν από το deploy      ✅ v0.1
+Πλατφόρμα ───────────► POST /cluster/scan επανεξέταση cluster (kube-bench + PSA)    ✅ v0.1
 Οποιοσδήποτε (kubectl) ► Admission Webhook  έλεγχος ό,τι μπαίνει στο cluster          σχέδιο
 CI/CD ───────────────► CLI                έλεγχος αρχείων YAML πριν από το merge     σχέδιο
 Υπεύθυνος ασφαλείας ─► UI                 κανόνες ON/OFF, reports                    σχέδιο
@@ -63,12 +64,21 @@ CI/CD ───────────────► CLI                έλε
 | 5.2.12 | `hostPath` volumes | μπλοκάρισμα |
 | 5.2.13 | `hostPort` | μπλοκάρισμα |
 
+Επανεξέταση του cluster (το «reviewed» του A.8.9), `POST /cluster/scan`:
+
+| Έλεγχος | Πώς |
+|---|---|
+| CIS Kubernetes Benchmark για το cluster (nodes, control plane, policies) | **kube-bench** (`aquasec/kube-bench:v0.15.6`), ως Job στο namespace `compliance-system`. Αναγνωρίζει μόνο του το k3s και διαλέγει το αντίστοιχο benchmark |
+| Pod Security Admission στα namespaces των workloads (CIS 5.2.1, δεύτερη γραμμή άμυνας) | έλεγχος των labels `pod-security.kubernetes.io/*`: `enforce: baseline` ή `restricted` = συμμορφούμενο |
+
+Κάθε scan αποθηκεύεται ως **cluster-logs** (με SHA-256), και το τελευταίο scan μπαίνει αυτούσιο στην ενότητα `cluster_review` κάθε report αξιολόγησης (workspace-logs). Το εργαλείο **δεν** αποφασίζει πότε τρέχει: η πλατφόρμα το καλεί (π.χ. καθημερινά, σε κάθε deploy, κατ' απαίτηση).
+
 ### Σχεδιασμένοι (Tiers 1–3, 22 έλεγχοι του Annex A.8)
 
 | Τρόπος υλοποίησης | Έλεγχοι |
 |---|---|
 | Έλεγχος και διόρθωση manifest | A.8.28, A.8.31, A.8.12, A.8.6, A.8.2, A.8.16, A.8.29, A.8.24, A.8.21 |
-| Εξωτερικά εργαλεία (Trivy, ClamAV, Cosign, kube-bench) | A.8.7, A.8.8, A.8.12 (secrets στο image), A.8.4, A.8.27, A.8.20, A.8.22, A.8.15, και για τον A.8.9: Pod Security Admission label και kube-bench |
+| Εξωτερικά εργαλεία (Trivy, ClamAV, Cosign, kube-bench) | A.8.7, A.8.8, A.8.12 (secrets στο image), A.8.4, A.8.27, A.8.20, A.8.22, A.8.15 |
 | Μέσω webhook (ποιος κάνει το αίτημα) | A.8.5, A.8.32, A.8.3 (μόνο report) |
 | Ιδιότητες του ίδιου του εργαλείου | A.8.25 (shift-left έλεγχος), A.8.26 (δυναμικοί κανόνες) |
 
@@ -78,8 +88,9 @@ CI/CD ───────────────► CLI                έλε
 
 ```
 data/
-├── reports/<report_id>.json        ένα πλήρες report ανά αξιολόγηση
-└── logs/decisions-YYYY-MM-DD.jsonl ημερήσιο log αποφάσεων (μία γραμμή ανά αξιολόγηση, μόνο προσθήκες)
+├── reports/<report_id>.json        ένα πλήρες report ανά αξιολόγηση (workspace-logs)
+├── cluster/<scan_id>.json          ένα πλήρες report ανά επανεξέταση του cluster (cluster-logs)
+└── logs/decisions-YYYY-MM-DD.jsonl ημερήσιο log αποφάσεων (μία γραμμή ανά αξιολόγηση ή scan, μόνο προσθήκες)
 ```
 
 Κάθε report περιέχει: ποιο workload ελέγχθηκε και για ποιον (context του καλούντος), έκδοση εργαλείου και κανόνων, όλους τους κανόνες (ON και OFF), κάθε έλεγχο με αναφορά ISO/CIS και τιμή πριν/μετά, την τελική απόφαση (`ALLOW`/`DENY`) και SHA-256 του manifest πριν και μετά. Το SHA-256 του ίδιου του report επιστρέφεται στον καλούντα και γράφεται στο log, ώστε κάθε αλλοίωση να εντοπίζεται. Παράδειγμα: [examples/sample-report.json](examples/sample-report.json).
@@ -90,7 +101,9 @@ data/
 
 - **Την ασφάλεια της πλατφόρμας** (login, ρόλοι, έγκριση αιτημάτων). Ευθύνη της πλατφόρμας.
 - **Το hardening των images** (αφαίρεση sudo, pinning εκδόσεων, υπογραφή). Γίνεται στο build της πλατφόρμας· το εργαλείο ελέγχει το αποτέλεσμα (scans, υπογραφή).
-- **Την υποδομή** (audit logging του k3s, Ingress, TLS). Το εργαλείο ελέγχει ότι υπάρχουν και αναφέρει όσα λείπουν.
+- **Την υποδομή** (namespaces με τα labels του Pod Security Admission, audit logging του k3s, Ingress, TLS). Το εργαλείο ελέγχει ότι υπάρχουν και αναφέρει όσα λείπουν.
+
+**Γνωστό ρίσκο:** για το kube-bench το εργαλείο χρησιμοποιεί το kubeconfig του μηχανήματος (πλήρη δικαιώματα στο cluster). Θα αντικατασταθεί από δικό του ServiceAccount με ελάχιστα δικαιώματα (κανόνας A.8.3).
 
 Τι χρειάζεται να κάνει μια πλατφόρμα για να το χρησιμοποιήσει: [integration-instructions.md](integration-instructions.md).
 
@@ -103,6 +116,7 @@ compliance-engine/
 │   ├── engine.js        αξιολόγηση, διόρθωση, report (δεν αποθηκεύει τίποτα)
 │   ├── store.js         αποθήκευση reports και log αποφάσεων
 │   ├── workload.js      εντοπισμός του Pod spec (Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob)
+│   ├── cluster.js       επανεξέταση του cluster: kube-bench (Job) και Pod Security Admission, μέσω kubectl
 │   ├── canonical.js     κανονικοποιημένο JSON και SHA-256
 │   ├── config.js        ρυθμίσεις από .env
 │   └── rules/           ένας κανόνας ανά αρχείο

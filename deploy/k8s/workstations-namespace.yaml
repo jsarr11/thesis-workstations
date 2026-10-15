@@ -1,0 +1,17 @@
+# Namespace των workstations με Pod Security Admission (ISO 27001 A.8.9, δεύτερη γραμμή άμυνας).
+# Το k3s απορρίπτει μόνο του κάθε Pod που παραβιάζει το επίπεδο "baseline" (hostPID, hostIPC, hostNetwork,
+# privileged, hostPath, hostPort), ακόμα κι αν παρακαμφθεί η πλατφόρμα (π.χ. με kubectl apply).
+# warn/audit "restricted": μόνο προειδοποίηση· το enforce ανεβαίνει σε restricted όταν υλοποιηθούν οι A.8.28 και A.8.2.
+# Εφαρμόζεται από το deploy.sh.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: workstations
+  labels:
+    app.kubernetes.io/managed-by: thesis-manager
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest

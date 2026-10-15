@@ -2,7 +2,7 @@
 
 > Τι πρέπει να κάνει μια πλατφόρμα για να χρησιμοποιήσει το Compliance Engine.
 
-**Κατάσταση:** το API της ενότητας 3.1 είναι υλοποιημένο (v0.1.0). Ό,τι σημειώνεται ως *(σχέδιο)* δεν υπάρχει ακόμα.
+**Κατάσταση:** τα API των ενοτήτων 3.1 και 3.2 είναι υλοποιημένα (v0.1.0). Ό,τι σημειώνεται ως *(σχέδιο)* δεν υπάρχει ακόμα.
 
 ---
 
@@ -36,6 +36,9 @@ curl http://127.0.0.1:5100/health
 | `GET` | `/rules` | Κατάλογος κανόνων με ISO, CIS και ελέγχους |
 | `POST` | `/evaluate` | Αξιολόγηση και διόρθωση ενός manifest |
 | `GET` | `/reports/:report_id` | Το αποθηκευμένο report, αυτούσιο |
+| `POST` | `/cluster/scan` | Επανεξέταση του cluster: kube-bench + Pod Security Admission (ενότητα 3.2) |
+| `GET` | `/cluster/latest` | Σύνοψη του τελευταίου scan |
+| `GET` | `/cluster/reports/:scan_id` | Το αποθηκευμένο cluster-logs, αυτούσιο |
 
 **Αίτημα `POST /evaluate`:**
 
@@ -77,7 +80,37 @@ curl http://127.0.0.1:5100/health
 
 Πλήρες δείγμα report: [examples/sample-report.json](examples/sample-report.json).
 
-### 3.2 Admission webhook *(σχέδιο)*
+### 3.2 Επανεξέταση του cluster (A.8.9 «reviewed»)
+
+Το εργαλείο τρέχει το CIS Kubernetes Benchmark με το **kube-bench** (Job στο namespace `compliance-system`) και ελέγχει τα labels του **Pod Security Admission** στα namespaces των workloads (`CLUSTER_NAMESPACES`). Το **πότε** το αποφασίζει η πλατφόρμα.
+
+**Αίτημα:**
+
+```json
+POST /cluster/scan
+{ "trigger": "SCHEDULED", "requested_by": "admin@example.com" }
+```
+
+- `trigger`: `SCHEDULED` (αυτόματο), `STARTUP` (εκκίνηση/deploy) ή `MANUAL` (κατ' απαίτηση από χρήστη).
+- `requested_by`: ποιος το ζήτησε (για τα `MANUAL`), μπαίνει στο report.
+- Η κλήση περιμένει να τελειώσει το scan (έως `CLUSTER_SCAN_TIMEOUT_SECONDS`, προεπιλογή 300''. Την πρώτη φορά κατεβαίνει και το image). Δύο scans δεν τρέχουν ταυτόχρονα (`409`).
+
+**Απάντηση:**
+
+```json
+{
+  "scan_id": "…", "report_sha256": "…", "status": "COMPLETED", "trigger": "SCHEDULED", "generated_at": "…",
+  "summary": { "pass": 52, "fail": 2, "warn": 8, "info": 0, "psa_compliant": true }
+}
+```
+
+- `status: FAILED` (π.χ. δεν κατέβηκε το image): αποθηκεύεται κανονικά report με το σφάλμα, ως αποδεικτικό ότι επιχειρήθηκε η επανεξέταση.
+- Κρατήστε `scan_id` και `report_sha256` και ελέγξτε το SHA-256 κατά τη λήψη (`GET /cluster/reports/:scan_id`).
+- Το τελευταίο scan μπαίνει αυτούσιο σε κάθε επόμενο report αξιολόγησης (`cluster_review`).
+
+**Τι χρειάζεται το εργαλείο:** `kubectl` και kubeconfig (`KUBECONFIG`, προεπιλογή `~/.kube/config`) με δικαίωμα να δημιουργεί namespace και Jobs και να διαβάζει namespaces, και πρόσβαση στο Docker Hub για το image του kube-bench.
+
+### 3.3 Admission webhook *(σχέδιο)*
 
 Όταν είναι ενεργό, το εργαλείο ελέγχει ό,τι μπαίνει στο cluster, ακόμα κι αν η πλατφόρμα δεν το καλέσει. Δεν χρειάζεται αλλαγή στον κώδικα της πλατφόρμας, μόνο οι ρυθμίσεις της ενότητας 4.
 
@@ -88,6 +121,8 @@ curl http://127.0.0.1:5100/health
 | Τι | Γιατί | Κανόνας |
 |---|---|---|
 | Διακόπτες ON/OFF των κανόνων και ποιος τους άλλαξε | Μέχρι να υπάρξει το UI του εργαλείου, στέλνονται σε κάθε `/evaluate` | όλοι |
+| Namespace των workloads με labels του Pod Security Admission (`enforce: baseline` ή `restricted`) | Το εργαλείο ελέγχει τα labels, δεν φτιάχνει τα namespaces της πλατφόρμας | A.8.9 (CIS 5.2.1) |
+| Κλήση του `POST /cluster/scan` τουλάχιστον μία φορά την ημέρα | Το εργαλείο δεν έχει δικό του χρονοπρογραμματισμό | A.8.9 (επανεξέταση) |
 | Τα workloads να μην τρέχουν στο `default` namespace | Το webhook μπορεί μόνο να απορρίψει, όχι να αλλάξει namespace | A.8.31 |
 | Ο ServiceAccount της πλατφόρμας να δηλωθεί στο εργαλείο ως εγκεκριμένος | Αλλιώς ο κανόνας GitOps θα μπλοκάρει την ίδια την πλατφόρμα | A.8.32 |
 | Hardening των images στο build (non-root, χωρίς sudo, pinned εκδόσεις) | Το εργαλείο ελέγχει τα images, δεν τα ξαναχτίζει | A.8.28, A.8.2 |
@@ -110,6 +145,8 @@ curl http://127.0.0.1:5100/health
 - [x] Audit της πλατφόρμας: μία εγγραφή `COMPLIANCE` ανά κανόνα, `COMPLIANCE-GATE` σε απόρριψη, `COMPLIANCE-ENGINE` όταν το εργαλείο δεν απαντά, `REPORT-DOWNLOAD` σε κάθε λήψη.
 - [x] UI: κουμπί «📄 workspace-logs» μόνο για τον admin, στην καρτέλα Workstations και στο Audit Trail (γραμμή `DEPLOY` ή `COMPLIANCE-GATE`), ώστε το report να κατεβαίνει και μετά τον τερματισμό → `GET /api/workstations/:id/compliance-report`. Ο developer δεν βλέπει το report.
 - [x] Policy Checklist με ένα υπο-tab ανά profile.
+- [x] Namespace `workstations` με Pod Security Admission (`deploy/k8s/workstations-namespace.yaml`, `enforce: baseline`, `warn`/`audit: restricted`), το εφαρμόζει το `deploy.sh`, που μεταφέρει και τα workstations από το `default`.
+- [x] Επανεξέταση του cluster (`manager/cluster-scans.js`, migration `003_cluster_scans.sql`): σε κάθε εκκίνηση του Manager, κάθε 24 ώρες (`CLUSTER_SCAN_INTERVAL_HOURS`) και με το κουμπί «▶ Έλεγχος cluster (CIS) τώρα» στο Policy Checklist. Κάθε scan γράφει γραμμή `CLUSTER / CIS-SCAN` στο Audit Trail με κουμπί «📄 cluster-logs».
 - [ ] Αφαίρεση της καρτέλας «Policies» από το `/admin`, όταν υπάρξει το UI του εργαλείου.
-- [ ] Workstations σε δικό τους namespace αντί για `default` (A.8.31).
+- [ ] Έλεγχος από τον κανόνα A.8.31 ότι κανένα workload δεν τρέχει στο `default` (το namespace υπάρχει ήδη).
 - [ ] Δήλωση του ServiceAccount του Manager ως εγκεκριμένου (A.8.32).
