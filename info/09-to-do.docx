@@ -1,0 +1,124 @@
+To-Do: Κλείσιμο του DevOps Κομματιού
+
+Δημιουργήθηκε: 13/10/2026 19:48
+Κατάσταση: ο κώδικας του DevOps κομματιού είναι ολοκληρωμένος και ανεβασμένος (main = c29784e). Μένουν επιβεβαιώσεις στο VM, μερικές συστάσεις και προαιρετικές βελτιώσεις. Αναλυτικά για όσα έγιναν: 08-workflow.docx, Steps 5–14.
+
+Σύμβολα: ☐ = εκκρεμεί, ☑ = έγινε
+
+
+1. Επιβεβαιώσεις στο VM (από εμένα, περίπου 10 λεπτά)
+
+☐ 1.1 VS Code με token
+    Login ως developer → αίτημα → login ως admin (σε ανώνυμο παράθυρο) → Notifications → Accept
+    → ως developer: "🔗 Άνοιγμα VS Code" → πρέπει να ανοίξει.
+    → Σε ΝΕΟ ανώνυμο παράθυρο, το ίδιο URL χωρίς το "&tkn=..." → ΔΕΝ πρέπει να ανοίξει.
+    Αν το workstation βγει "⚠️ Απέτυχε":  kubectl get pods  και  kubectl logs <όνομα-pod>
+    (Είναι το μόνο κομμάτι που δεν δοκιμάστηκε εκτός VM, γιατί χρειάζεται k3s.)
+
+☐ 1.2 Τα απορριφθέντα φαίνονται χωρίς το "Εμφάνιση ιστορικού" (Step 14)
+    Ως developer: ένα αίτημα που απορρίφθηκε τις τελευταίες 24 ώρες πρέπει να φαίνεται αμέσως με "Αιτιολογία: ...".
+
+☐ 1.3 Το νυχτερινό backup έτρεξε μόνο του (02:00)
+    cat /var/log/thesis-db-backup.log
+    sudo ls -lh /var/backups/thesis-db
+    → πρέπει να υπάρχει νέο thesis-db_<ημερομηνία>_0200.sql.gz και audit-logs-<χθες>.json
+
+☐ 1.4 Trivy report (Βήμα 3.2 του blueprint, το "πριν" για τη Φάση 2)
+    cd ~/thesis-workstations && bash docker/scan-images.sh
+    cat reports/<ημερομηνία>/summary.txt
+    df -h /        (η πρώτη φορά κατεβάζει τη βάση ευπαθειών του Trivy, περίπου 1 GB)
+    → Να σταλεί το summary.txt για καταγραφή στο workflow.
+
+
+2. Συνιστώνται
+
+☐ 2.1 Σταθερή IP για το VM
+    ip -br link      → MAC της ens18
+    Στο router: DHCP reservation της 192.168.1.248 για αυτή τη MAC.
+
+☐ 2.2 Καταγραφή του risk acceptance για τους κωδικούς (στο 08-workflow)
+    Οι παλιοί κωδικοί (Proxmox root, root1, PostgreSQL) υπάρχουν στο ιστορικό του public repository.
+    Απόφαση: αποδοχή του κινδύνου, γιατί το σύστημα είναι μόνο σε LAN χωρίς port forwarding. Αλλαγή όλων
+    στη μετάβαση στο cloud, με νέους τυχαίους κωδικούς (INSTALL.md §6.2).
+    Μέχρι τότε: όχι port forwarding, οι κωδικοί αυτοί να μη χρησιμοποιούνται πουθενά αλλού.
+    → Να γραφτεί ως "ISO 27001 risk acceptance" (κίνδυνος, αξιολόγηση, απόφαση, ημερομηνία επανεξέτασης).
+
+☐ 2.3 (Προαιρετικά, για τάξη) Μετονομασία του τοπικού branch στο VM από master σε main
+    cd ~/thesis-workstations && git branch -m master main && git branch -u origin/main
+
+
+3. Προαιρετικά, για "άψογο"
+
+☐ 3.1 Tag v1.0-devops στο git: σημάδι "εδώ έκλεισε το DevOps", για αναφορά στη διπλωματική (1 λεπτό)
+
+☐ 3.2 Έξυπνο health check
+    Το /api/health ελέγχει επιπλέον: PostgreSQL, k3s API, ελεύθερο δίσκο (< 80%), images στο k3s.
+    Ένδειξη κατάστασης (πράσινο/κόκκινο) στο /admin. Το deploy.sh γίνεται κόκκινο αν κάτι από αυτά πέσει.
+    (Το σημερινό /api/health λέει "UP" ακόμα κι αν η βάση ή το k3s έχουν πέσει.)
+
+☐ 3.3 Δοκιμή του INSTALL.md σε καινούργιο VM στο Proxmox (περίπου 1,5 ώρα)
+    Η μόνη πραγματική απόδειξη ότι ένας συνάδελφος μπορεί να το στήσει. Ό,τι σκαλώσει διορθώνεται στον οδηγό.
+
+
+4. Ιδέες για σκέψη (τι άλλο μπορεί να θέλω πριν κλείσει το DevOps)
+
+☐ 4.1 Log rotation του PM2 (pm2-logrotate)
+    Τα logs του Manager μεγαλώνουν χωρίς όριο, που είναι κίνδυνος για τον δίσκο (βλ. Step 5). Μικρή αλλαγή.
+
+☐ 4.2 Cluster overview στο /admin (Tab 2 του blueprint §12)
+    Χρήση CPU/RAM του k3s, ενεργά Pods, uptime, ελεύθερος δίσκος. Το blueprint το προβλέπει, αλλά δεν έχει υλοποιηθεί.
+
+☐ 4.3 Μόνιμος αποθηκευτικός χώρος για τα αρχεία του χρήστη (PersistentVolume)
+    Σήμερα, όταν ένα workstation τερματίζεται ή λήγει, τα αρχεία του χρήστη χάνονται. Θέλω να μένουν ανά χρήστη;
+    (Συνδέεται και με το read-only root filesystem του Data Analyst profile στη Φάση 2.)
+
+☐ 4.4 Παράταση συνεδρίας
+    Κουμπί "+2 ώρες" για τον developer (ή μόνο με έγκριση admin) πριν λήξουν οι 10 ώρες.
+
+☐ 4.5 Ειδοποιήσεις εκτός UI
+    Email ή μήνυμα στον admin για νέο αίτημα, και στον developer για έγκριση ή απόρριψη. Θέλει SMTP ή webhook.
+
+☐ 4.6 Αναζήτηση και φίλτρα στο Audit Trail (ανά χρήστη, stage, status, ημερομηνία)
+
+☐ 4.7 Αυτόματα tests στο CI
+    Τα integration tests (πραγματική PostgreSQL) να τρέχουν στο GitHub Actions πριν από κάθε deploy, ώστε ένα bug
+    σαν του Step 7 να μη φτάσει ποτέ στο VM.
+
+
+5. Φάση 2 (ασφάλεια): ΟΧΙ DevOps, για μετά
+
+    - Hardening των Pods: securityContext (runAsNonRoot, allowPrivilegeEscalation: false, drop ALL capabilities,
+      readOnlyRootFilesystem όπου γίνεται), resource limits ανά profile (05-workstation-profiles §2)
+    - Auto-remediation του manifest βάσει των κανόνων του Admin (policy_rules, που είναι ακόμα άδειος)
+    - NetworkPolicies και ξεχωριστό namespace για τα workstations (όχι default)
+    - Αφαίρεση του sudo NOPASSWD από το upstream image (εύρημα Step 13.4)
+    - Trivy μέσα στο pipeline (Stage 1) με gate 0 Critical / 0 High
+    - Admission gate (Kyverno ή OPA Gatekeeper, Stage 3)
+    - Bootstrap verification (Stage 4)
+    - HTTPS (TLS) για portal και workstations
+    - Live status των σταδίων compliance στο UI ([✓] Manifest Policy Check → AUTO-REMEDIATED)
+
+
+Σημειώσεις για αύριο
+- Πρώτα οι ενότητες 1 και 2. Μετά επιλογή από τις 3 και 4 ό,τι θέλω, ώστε να κλείσει το DevOps την ίδια μέρα.
+- Για δοκιμή δύο ρόλων ταυτόχρονα: ο admin σε κανονικό παράθυρο, ο developer σε ανώνυμο (Ctrl+Shift+N).
+- Πριν από κάθε push: git status καθαρό, push μόνο από το main.
+
+
+Ενημέρωση 15/10/2026 11:51: Έναρξη Φάσης 2
+
+Απόφαση: το DevOps κομμάτι θεωρείται κλειστό. Η Φάση 2 υλοποιείται ως ξεχωριστό εργαλείο, το Compliance Engine (φάκελος compliance-engine/, βλ. 08-workflow, Step 17). Οι εκκρεμότητες των ενοτήτων 1 και 2 παραπάνω ισχύουν ακόμα.
+
+☑ Ανάλυση του A.8.9 και δημιουργία του 10-Rules-Application.docx
+☑ Απόφαση αρχιτεκτονικής και φάκελος compliance-engine/ (about.md, integration-instructions.md)
+☐ Το Trivy report (1.4) να τρέξει ΠΡΙΝ από οποιαδήποτε αλλαγή στα Dockerfiles (baseline για τη σύγκριση πριν/μετά)
+☐ Λήψη του επίσημου mapping "CIS Controls v8.1 → ISO/IEC 27001:2022" και έλεγχος της γραμμής του A.8.9
+☐ Πλάνο του σκελετού του Compliance Engine (δομή, format κανόνα, API, deploy)
+☐ Υλοποίηση του A.8.9 ως πρώτου κανόνα
+☐ Ανάλυση των υπόλοιπων κανόνων στο 10-Rules-Application.docx (επόμενος: A.8.28)
+
+Θα χρειαστούν στην πορεία (ευθύνες της πλατφόρμας, βλ. compliance-engine/integration-instructions.md §4):
+☐ Hardening των images σε ένα rebuild: αφαίρεση sudo NOPASSWD, περιττά binaries, pinning εκδόσεων (kubectl, Trivy, pip)
+☐ Ξεχωριστό namespace για τα workstations (όχι default)
+☐ Υπογραφή των images με Cosign (A.8.4)
+☐ Ingress με TLS (A.8.24, A.8.21). Το k3s έχει Traefik, όχι NGINX

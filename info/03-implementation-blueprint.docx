@@ -1,0 +1,426 @@
+Ιδέες Υλοποίησης
+
+
+1. Βασικές Αρχιτεκτονικές Αποφάσεις
+
+Πλατφόρμα Workstation: Επιλογή του Gitpod (συγκεκριμένα της open-source εκδοχής, του OpenVSCode Server) αντί του GitHub Codespaces. Αυτό εξασφαλίζει πλήρη έλεγχο στα base images, δυνατότητα προσαρμογής των ελέγχων σε κάθε layer και εύκολη τοπική εκτέλεση στο εργαστήριο.
+
+Η ροή ακολουθεί αρχιτεκτονική microservices και αποτελείται από τρία μέρη.
+
+Το UI Container (Admin & Developer Frontend) είναι ένα frontend σε Flutter/Web. Για τον Admin διαθέτει ένα δυναμικό checklist για την επιλογή των κανόνων (ON/OFF). Για τον Developer διαθέτει ένα dropdown επιλογής του επιθυμητού profile (π.χ. "Blank", "Dev", "Data").
+
+Ο Manager (Glue Layer) είναι το backend API σε Node.js που δέχεται το αίτημα, διαβάζει το UI checklist, ενορχηστρώνει τους ελέγχους ασφαλείας, εφαρμόζει την αυτόματη αποκατάσταση (Auto-Remediation) και επικοινωνεί με το Kubernetes API.
+
+Το Workstation Pod είναι το τελικό container που τρέχει το περιβάλλον του editor (OpenVSCode) και δημιουργείται δυναμικά μέσω k3s.
+
+
+2. Αρχικό Setup Υποδομής (Proxmox & Version Control)
+
+Βήμα 2.1, Το Εργαστήριο (Proxmox Lab): Στήσιμο μιας virtual machine (π.χ. Ubuntu Server 22.04 LTS, 4-8 vCPUs, 8-16 GB RAM) στο τοπικό Proxmox περιβάλλον. Εγκατάσταση του k3s (ελαφρύ Kubernetes) και των βασικών εργαλείων υποδομής (kubectl, helm και docker/containerd).
+
+Βήμα 2.2, Έναρξη GitHub Repository: Άμεση δημιουργία αποθετηρίου με ένα σωστό .gitignore (για απόκρυψη προσωρινών αρχείων, secrets και node_modules). Τα commits θα πρέπει να είναι μικρά, διακριτά και συχνά, ώστε να λειτουργούν ως restore points αλλά και ως απόδειξη της τεχνικής πορείας.
+
+
+3. Φάση 1: Το MVP (Μίνιμαλ Σκελετός)
+
+Σε αυτή τη φάση ο στόχος είναι να λειτουργήσει η βασική επικοινωνία των components, χωρίς να φορτωθούν ακόμα τα πολύπλοκα εργαλεία ελέγχου.
+
+Βήμα 3.1, Το Default Image: Δημιουργία ενός απλού, εκ των προτέρων compliant Dockerfile για ένα "άδειο" workstation.
+
+Βήμα 3.2, Στατικός Έλεγχος (Pre-baked Compliance): Ορισμός των βασικών κανόνων που τηρεί το base image (π.χ. απουσία critical ευπαθειών, εκτέλεση ως non-root user).
+
+Βήμα 3.3, Συντονισμός Manager (Dummy Logs): Υλοποίηση του Manager ώστε να δέχεται το αίτημα από το UI και να εκτυπώνει logs στην κονσόλα για κάθε βήμα, προσομοιώνοντας τη διαδικασία (π.χ. [LOG] Step 1: Image Validation, [LOG] Step 2: Manifest Generation).
+
+Βήμα 3.4, Τελική Παράδοση: Ο Manager ολοκληρώνει το deployment του Pod στο k3s και επιστρέφει στο UI το τελικό URL πρόσβασης του workstation.
+
+
+4. Φάση 2: Ο Μηχανισμός Δυναμικού Compliance (Το Glue Layer)
+
+Αυτός είναι ο πυρήνας της διπλωματικής. Το hardening δεν γίνεται χειροκίνητα από τον χρήστη, αλλά εντελώς αυτόματα στο παρασκήνιο από το glue layer.
+
+Στάδιο 1 (Scan Image): Ο Manager ελέγχει το image που επιλέχθηκε (με κλήση στο Trivy API) κατά τη δημιουργία. Αν βρεθεί πρόβλημα, εφαρμόζεται αυτόματο remediation ή ακύρωση.
+
+Στάδιο 2 (Manifest Check & Remediation): Έλεγχος των παραμέτρων του Kubernetes manifest βάσει των επιλογών του Admin στο UI (π.χ. resource limits, allowPrivilegeEscalation=false, network policies). Αν υπάρχουν παραλείψεις, ο Manager παρεμβαίνει και διορθώνει το manifest (Auto-Remediation).
+
+Στάδιο 3 (Admission Gate): Το manifest περνάει από το τελικό admission gate (π.χ. Kyverno ή OPA Gatekeeper), το οποίο εγκρίνει τη δημιουργία του στο cluster.
+
+Στάδιο 4 (Συγκεντρωτικός Έλεγχος): Ένας τελικός έλεγχος κατά το bootstrap, μόλις ολοκληρωθεί το container, για επιβεβαίωση της πλήρους συμμόρφωσης τη στιγμή ακριβώς που παραδίδεται στον χρήστη.
+
+Στάδιο 5 (Αποδείξεις & UI Status): Καταγραφή όλων των ενεργειών σε αναλυτικά audit logs σε μορφή JSON. Ταυτόχρονα, το UI εμφανίζει στον χρήστη ένα real-time status bar όπου αναγράφονται ρητά οι αυτοματοποιημένες διορθώσεις που πραγματοποιήθηκαν (π.χ. [✓] Manifest Policy Check -> AUTO-REMEDIATED).
+
+
+5. Φάση 3: Επέκταση σε Σενάρια & Profiles
+
+Εφόσον ο βασικός κύκλος του MVP λειτουργεί με επιτυχία, το σύστημα θα επεκταθεί ώστε να υποστηρίζει πολλαπλά σενάρια μέσω διαφορετικών προδιαμορφωμένων base images.
+
+Το Dev-Workstation Profile θα έχει προσαρμοσμένο Dockerfile με εργαλεία ανάπτυξης (όπως Node.js, Git) και αντίστοιχους εξειδικευμένους κανόνες ελέγχου.
+
+Το Data/Analyst-Workstation Profile θα έχει προσαρμοσμένο Dockerfile με εργαλεία ανάλυσης (Python, Pandas, Jupyter) και δυνητικά διαφορετικές απαιτήσεις στο manifest (π.χ. αυξημένα όρια CPU/RAM).
+
+
+6. Διαχωρισμός των Pipelines (Αρχιτεκτονική Αποσαφήνιση)
+
+Στο project υπάρχουν δύο διαφορετικές έννοιες pipeline.
+
+Α. Το "Internal Security & Remediation Pipeline" (ο πυρήνας, υποχρεωτικό)
+
+Είναι η λογική ροής που εκτελεί ο Manager κάθε φορά που φτάνει ένα αίτημα.
+
+    [ Request ] ──► [ Stage 1: Image Scan ] ──► [ Stage 2: Manifest Validation ] ──► [ Stage 3: Admission ] ──► [ Deploy ]
+                           │                             │
+                           ▼                             ▼
+                   (Auto-Remediation)            (Auto-Remediation)
+
+Κάθε στάδιο ελέγχει για παραβάσεις, εφαρμόζει auto-remediation αν βρει πρόβλημα και προχωράει μόνο αν το σύστημα είναι compliant.
+
+Β. CI/CD Pipeline στο GitHub (προαιρετικό)
+
+Είναι το "κλασικό" CI/CD (π.χ. GitHub Actions) ώστε να χτίζονται αυτόματα τα images μετά από κάθε git push. Για το αρχικό MVP δεν απαιτείται (το build θα γίνεται χειροκίνητα με docker build και push), αλλά μπορεί να προστεθεί στο τέλος.
+
+
+7. Τεκμηρίωση Συμμόρφωσης (Compliance Evidence)
+
+Πώς αποδεικνύεται η συμμόρφωση στην επιτροπή ή σε έναν auditor;
+
+Αποδείξεις για Pre-Hardened Images (Static Analysis)
+
+Η απόδειξη βασίζεται σε τρία συγκεκριμένα τεκμήρια, πριν καν εμπλακεί ο Manager.
+
+Το πρώτο είναι το ίδιο το Dockerfile (static definition). Εκεί φαίνεται ο non-root user, με την ύπαρξη της εντολής USER 1000 αντί για το default root. Φαίνεται επίσης η χρήση minimal base image, δηλαδή ελαφριάς βάσης (π.χ. alpine, debian-slim ή distroless). Τέλος, φαίνονται τα minimal packages, δηλαδή η αφαίρεση περιττών εργαλείων και ο καθαρισμός της cache (rm -rf /var/lib/apt/lists/*).
+
+Το δεύτερο είναι το static vulnerability report (Trivy scan report). Πριν το image μπει στο registry, σκανάρεται τοπικά, και το παραγόμενο αρχείο δείχνει 0 Critical και 0 High ευπάθειες:
+
+    trivy image my-workstation:base-v1 > base-image-scan-report.json
+
+Το τρίτο είναι τα image metadata και τα registry tags. Μέσα στο Dockerfile προστίθενται metadata labels:
+
+    LABEL maintainer="you"
+    LABEL security.hardened="true"
+    LABEL compliance.standard="CIS-Benchmark-v1.0"
+
+Στο registry χρησιμοποιείται specific tagging (π.χ. my-workstation:v1.0-hardened-sha256) αντί του αόριστου latest.
+
+Αποδείξεις για Dynamic Remediation (κατά τη δημιουργία)
+
+Όταν ο Manager διορθώνει το YAML την ώρα του deployment, οι αποδείξεις βρίσκονται στα audit logs (σε μορφή JSON) του ίδιου του Node.js Manager και στο status bar του UI, που ενημερώνει live τον χρήστη.
+
+
+8. Πώς Λειτουργεί το UI στην Πράξη
+
+Δεν χρειάζεται να φτιαχτεί container με Chrome. Ο browser (Chrome, Firefox κ.λπ.) τρέχει ήδη στον τοπικό υπολογιστή, οπότε δεν χρειάζεται φυλλομετρητής μέσα σε container.
+
+Το UI είναι μια κλασική ιστοσελίδα (web app). Η εφαρμογή του UI φτιάχνεται π.χ. σε Flutter Web, React ή απλό HTML/CSS/JavaScript και τρέχει ως ένα ελαφρύ web server container στο k3s ή στο VM, σερβίροντας τα static αρχεία της ιστοσελίδας.
+
+Για την πρόσβαση, ο χρήστης (Admin ή Developer) ανοίγει τον Chrome του δικού του υπολογιστή, βάζει το URL του UI (π.χ. http://192.168.1.50:8080 ή http://portal.k3s.local) και η σελίδα φορτώνει στον browser του.
+
+Στη σελίδα, σε Admin mode ο χρήστης βλέπει το checklist με τους διακόπτες ασφαλείας (ON/OFF για τους κανόνες ISO/CIS). Σε Developer mode επιλέγει από ένα dropdown το profile που θέλει (π.χ. Developer, Data Analyst, DevOps) και πατάει το κουμπί "Create Workstation".
+
+Στο παρασκήνιο, η ιστοσελίδα στέλνει ένα HTTP request στον Manager (Node.js glue layer). Ο Manager τρέχει το compliance pipeline (Trivy scan, manifest remediation) και σηκώνει το Pod στο k3s. Μόλις το Pod ετοιμαστεί, ο Manager επιστρέφει στο UI το URL του νέου workstation.
+
+Για την τελική μετάβαση, στην οθόνη του UI εμφανίζεται ένα κουμπί ή link (π.χ. http://workstation-dev.k3s.local:3000). Με κλικ ανοίγει νέα καρτέλα στον Chrome και εμφανίζεται απευθείας ο OpenVSCode Server, δηλαδή το περιβάλλον του VS Code.
+
+Συνοψίζοντας, δεν φτιάχνεται image με Chrome. Φτιάχνεται μόνο το Docker image της ιστοσελίδας (frontend), και όλα προσπελαύνονται βάζοντας τα αντίστοιχα URLs στον Chrome που είναι ήδη εγκατεστημένος στο PC.
+
+
+9. Πού Βρίσκεται Τι (Η Μεγάλη Εικόνα)
+
+Δεν χρειάζεται Vagrant, διότι το Vagrant συνήθως φτιάχνει εικονικές μηχανές τοπικά στο VirtualBox/VMware του laptop, ενώ εδώ έχει ήδη επιλεγεί το Proxmox και το k3s.
+
+Η εργασία δεν τρέχει τα πάντα μέσα σε ένα τεράστιο VM. Χωρίζεται σε δύο βασικά επίπεδα.
+
+Το πρώτο είναι το επίπεδο υποδομής, δηλαδή το Proxmox VM. Στήνεται μία εικονική μηχανή μέσα στο Proxmox (ή σε τοπικό Ubuntu) και μέσα σε αυτήν εγκαθίσταται το k3s, ένα ελαφρύ Kubernetes cluster, που αποτελεί το "οικόπεδο" της εργασίας. Επειδή χρησιμοποιείται Kubernetes (k3s), αυτό το "οικόπεδο" είναι portable και μεταφέρεται αυτούσιο στο cloud αργότερα (π.χ. σε ένα managed Kubernetes cluster όπως AWS EKS ή Civo), χωρίς να χρειαστεί να ξαναγραφτεί ο κώδικας.
+
+Το δεύτερο είναι το επίπεδο της εργασίας, δηλαδή ό,τι τρέχει μέσα στο k3s. Εκεί σηκώνονται τα containers που περιγράφει η διπλωματική. Το UI & Admin Panel είναι η ιστοσελίδα όπου ο Admin ορίζει τους κανόνες ασφαλείας (ISO/CIS) και ο Developer διαλέγει profile. Ο Manager (Node.js glue layer) είναι το backend που κάνει τα Trivy scans, ελέγχει τα manifests και εκτελεί το auto-remediation, δηλαδή τη διόρθωση των σφαλμάτων ασφαλείας στα YAML. Τα workstation Pods είναι τα δυναμικά containers (OpenVSCode Server) που φτιάχνονται αυτόματα για κάθε χρήστη όταν πατάει το κουμπί δημιουργίας.
+
+Η άμεση κίνηση είναι η εξής: το Vagrant δεν χρειάζεται. Στο Proxmox φτιάχνεται ένα Ubuntu Server VM (π.χ. 22.04 LTS με 4-8 GB RAM) και μέσα σε αυτό εγκαθίσταται το k3s. Μόλις το kubectl get nodes επιστρέψει Ready, το στήσιμο της βάσης έχει ολοκληρωθεί. Στη συνέχεια ξεκινά το πρώτο κομμάτι κώδικα, δηλαδή ο Manager (Node.js) και ο τρόπος με τον οποίο θα διαβάζει τα πρώτα βασικά YAML manifests για να εφαρμόσει τους κανόνες συμμόρφωσης (Tier 1).
+
+
+10. Πώς Χτίζονται τα Images
+
+Ο browser και τα εργαλεία δεν φτιάχνονται από το μηδέν. Η υλοποίηση πατάει πάνω στην open-source τεχνολογία του Gitpod, τον OpenVSCode Server.
+
+Το base image (Dockerfile.base) χρησιμοποιεί ως βάση το έτοιμο image της κοινότητας, FROM gitpod/openvscode-server:latest. Πάνω σε αυτό προστίθενται τα απολύτως βασικά, όπως non-root user (USER 1000) και βασικά utilities όπως git και curl.
+
+Από το base image φτιάχνονται τρία ξεχωριστά Dockerfiles ανά profile, που κληρονομούν από αυτό (FROM workstation-base:v1). Το Dockerfile.developer προσθέτει Node.js, Python, Go, npm κ.λπ. Το Dockerfile.data-analyst προσθέτει Jupyter, Pandas, NumPy, R κ.λπ. Το Dockerfile.devops προσθέτει kubectl, helm, terraform, trivy κ.λπ.
+
+Όταν ο χρήστης μπαίνει στη σελίδα και διαλέγει profile (π.χ. Data Analyst), ο Manager δεν φτιάχνει το image από την αρχή. Απλά τραβάει (pull) το έτοιμο image workstation-profile:data-analyst που έχει χτιστεί προηγουμένως, κάνει το Trivy scan, διορθώνει το YAML manifest και σηκώνει το Pod στο k3s cluster.
+
+Αυτό είναι το πρώτο πρακτικό βήμα. Πριν γραφτεί ο κώδικας του Node.js Manager ή το UI, πρέπει να είναι έτοιμη η "βασική ύλη", δηλαδή τα containers που θα ζητάνε οι χρήστες.
+
+Πρώτα χτίζεται το base image, παίρνοντας το gitpod/openvscode-server:latest και προσθέτοντας τα βασικά:
+
+    docker build -f Dockerfile.base -t workstation-base:v1 .
+
+Μετά φτιάχνονται τα τρία εξειδικευμένα αρχεία (Dockerfile.developer, Dockerfile.data-analyst, Dockerfile.devops), που ξεκινούν με FROM workstation-base:v1, και χτίζονται ένα-ένα:
+
+    docker build -f Dockerfile.developer -t workstation-profile:developer .
+    docker build -f Dockerfile.data-analyst -t workstation-profile:data-analyst .
+    docker build -f Dockerfile.devops -t workstation-profile:devops .
+
+Τέλος, για να τα "βλέπει" το cluster, είτε γίνονται push στο local registry (localhost:5000) είτε περνιούνται στο k3s με την εντολή k3s image import.
+
+Μόλις τα τρία images είναι έτοιμα και αποθηκευμένα τοπικά στο k3s, το κομμάτι των images έχει τελειώσει και η υλοποίηση προχωράει στον Manager (Node.js) και στον κώδικα auto-remediation.
+
+
+11. Η Σειρά Υλοποίησης (Roadmap)
+
+Βήμα 1ο, Στήσιμο της Υποδομής (VM και k3s): Στο Proxmox φτιάχνεται ένα νέο virtual machine με Ubuntu Server. Μέσα στο VM εγκαθίσταται το k3s. Η ετοιμότητα του cluster επιβεβαιώνεται με την εντολή kubectl get nodes, η οποία πρέπει να επιστρέψει Ready.
+
+Βήμα 2ο, Δημιουργία και Build των Docker Images: Μέσα στο VM (ή στο τοπικό PC, και μετά μεταφέρονται στο VM) γράφονται τα Dockerfiles. Πρώτα φτιάχνεται το base image (Dockerfile.base), ξεκινώντας με FROM gitpod/openvscode-server:latest, το οποίο αργότερα κλειδώνεται σε συγκεκριμένη έκδοση. Μετά φτιάχνονται τα τρία εξειδικευμένα Dockerfiles (Dockerfile.developer, Dockerfile.data-analyst, Dockerfile.devops) που κληρονομούν από το base image (FROM workstation-base:v1). Τέλος γίνονται τα docker build και τα images περνιούνται μέσα στο k3s (π.χ. με k3s image import) ώστε να τα βλέπει το cluster.
+
+Βήμα 3ο, Ανάπτυξη του Manager (Node.js Glue Layer): Ξεκινά ο κώδικας σε Node.js. Υλοποιείται η λογική όπου ο Manager δέχεται τα αιτήματα, μιλάει με το Trivy API για τα scans και κάνει το auto-remediation στα YAML manifests, δηλαδή διορθώνει αυτόματα τις ρυθμίσεις ασφαλείας.
+
+Βήμα 4ο, Ανάπτυξη του Frontend UI (Flutter Web / Web App): Φτιάχνεται η ιστοσελίδα, με Admin view για τα CIS/ISO checklists και Developer view για την επιλογή profile. Γίνεται κι αυτή container και σηκώνεται στο k3s, ώστε να ανοίγει στον Chrome του υπολογιστή.
+
+Βήμα 5ο, Ολοκληρωμένες Δοκιμές (Testing): Γίνεται σύνδεση στο UI, επιλογή profile ή αλλαγή κανόνων, και έλεγχος ότι ο Manager σηκώνει σωστά το workstation Pod στο k3s με όλες τις προβλεπόμενες ρυθμίσεις ασφαλείας.
+
+Με αυτή τη σειρά υπάρχει πρώτα το "σπίτι" (Proxmox/k3s), μετά τα "υλικά" (Docker images), έπειτα ο "εγκέφαλος" (Manager) και τέλος η "πρόσοψη" (UI).
+
+
+12. Δομή Router και Routes (Frontend & Backend)
+
+Ο διαχωρισμός σε /user (ή /developer) και /admin είναι ο πιο ενδεδειγμένος.
+
+Το /developer (User Portal) περιέχει ένα dropdown επιλογής profile (Software Developer, Data Analyst, DevOps / Cloud Security), το κουμπί "Create Workstation", ένα live status bar με real-time πρόοδο του compliance pipeline (π.χ. [✓] Trivy Scan Passed, [✓] Manifest Auto-Remediated) και ένα κουμπί ή link πρόσβασης στον OpenVSCode Server μόλις το Pod γίνει Ready.
+
+Το /admin (Admin Control Center) έχει τρία tabs.
+
+Το Tab 1 (Compliance Policies & Checklist Matrix) περιέχει dropdown επιλογής profile (Dev, Data, DevOps) και δυναμικά checkboxes (ON/OFF) για τους κανόνες CIS / ISO 27001 Annex A.8 (π.χ. AllowPrivilegeEscalation, Read-Only Root FS, Resource Limits Quotas, Trivy Critical Threshold).
+
+Το Tab 2 (Cluster & Active Workstations Overview) δείχνει πληροφορίες για τη χρήση CPU/RAM του k3s, καθώς και τα ενεργά Pods με την κατάστασή τους (Running, Pending), το uptime και τις IP addresses.
+
+Το Tab 3 (Workstations Management & Audit Logs) περιέχει λίστα όλων των workstations που δημιουργήθηκαν (ιστορικό). Με κλικ σε ένα workstation γίνεται ανακατεύθυνση ή ανοίγει modal με το πλήρες JSON audit log, δηλαδή ποιες παραβιάσεις βρέθηκαν και τι διορθώθηκε αυτόματα από τον Manager.
+
+
+13. Χρειάζεται Βάση Δεδομένων (PostgreSQL / MySQL);
+
+Ναι, απολύτως, και ο λόγος δεν είναι μόνο για να μην είναι τίποτα hardcoded. Με ένα ελαφρύ PostgreSQL container (ή SQLite/Postgres στο k3s) λύνονται αυτόματα τρία βασικά προβλήματα.
+
+Το πρώτο είναι το state persistence (διατήρηση κατάστασης): αν ο Node.js Manager κάνει restart, δεν χάνονται οι επιλογές των checkboxes του Admin.
+
+Το δεύτερο είναι το dynamic policy engine: ο Admin αλλάζει έναν κανόνα στο UI, η αλλαγή σώζεται στη βάση, και όταν ο Developer ζητάει workstation, ο Manager διαβάζει τους κανόνες από τη βάση αντί για hardcoded if/else.
+
+Το τρίτο είναι τα audit trails και η τεκμηρίωση: τα JSON logs του auto-remediation αποθηκεύονται στη βάση, ικανοποιώντας το ISO 27001 Annex A.8.15 (Logging) για ακαδημαϊκή τεκμηρίωση.
+
+
+14. Πώς Επικοινωνούν τα Containers
+
+Η αρχιτεκτονική διαμορφώνεται σε ένα καθαρό microservices pattern:
+
+    [ Browser (Chrome) ]
+            │
+            ├──► [ UI Container (Flutter Web / Node Express) ]
+            │         │ (HTTP Requests: /admin, /developer)
+            │         ▼
+            └──► [ Node.js Manager (Glue Layer API) ]
+                      │
+                      ├──► [ PostgreSQL Container ] (Stores Policies, Logs, History)
+                      ├──► [ Trivy API / CLI ] (Stage 1: Image Scan)
+                      └──► [ k3s Kube-APIServer ] (Stage 2-4: Manifest & Pod Deploy)
+
+Προτεινόμενο πλάνο υλοποίησης
+
+Για βάση δεδομένων και Manager API (Step 3): στήνεται το Node.js backend με Express/Fastify, συνδέεται η Postgres (ή SQLite) με βασικούς πίνακες policies, workstations και audit_logs, και φτιάχνονται τα endpoints GET /api/policies/:profile και POST /api/policies (για τον Admin) και POST /api/workstations/deploy (για τον Developer).
+
+Για το frontend UI (Step 4): φτιάχνονται οι οθόνες /developer και /admin (με τα τρία tabs) και συνδέεται το UI με το Manager API.
+
+
+15. Η Τελική Αρχιτεκτονική των Containers
+
+Δεν χρειάζονται δύο ξεχωριστά containers για το backend. Ο Node.js server είναι ο ίδιος το glue layer (Manager), οπότε δεν χρειάζεται ξεχωριστό container για τον server του UI και ξεχωριστό για το glue layer. Η αρχιτεκτονική απλοποιείται σε τρία βασικά components.
+
+Το Database Container (PostgreSQL) φυλάσσει τα πάντα: τις ρυθμίσεις του Admin (checklists), τα profiles των workstations, τα ενεργά Pods και όλα τα JSON audit logs.
+
+Το Manager & Glue Layer Container (Node.js / Express) έχει τρεις ρόλους. Ως API/backend σερβίρει τα REST endpoints (/api/policies, /api/deploy κ.λπ.). Ως glue layer engine εκτελεί τα Trivy scans, κάνει parse και remediate στα YAML manifests και μιλάει με το Kubernetes API. Ως UI server σερβίρει το Flutter Web (ή React/HTML) frontend για τις σελίδες /developer και /admin.
+
+Τα Workstation Pods (OpenVSCode Server) είναι τα δυναμικά containers που σηκώνονται στο k3s όταν ο χρήστης ζητάει workstation.
+
+
+16. Το Σχήμα της Βάσης Δεδομένων (Database Schema)
+
+Για να μην είναι τίποτα hardcoded, η PostgreSQL θα έχει τρεις κύριους πίνακες.
+
+Ο πίνακας policies (Admin Rules) αποθηκεύει τους κανόνες CIS/ISO ανά profile, με τους οποίους αλληλεπιδρά ο Admin. Έχει τα πεδία id, profile_name (developer, data-analyst, devops), rule_key (π.χ. allow_privilege_escalation, read_only_root_fs, cpu_limit), is_enabled (BOOLEAN, true/false από τα checkboxes του Admin) και custom_value (π.χ. "1000m" για CPU limit).
+
+Ο πίνακας workstations (Active & History) αποθηκεύει τα workstations που έχουν δημιουργηθεί. Έχει τα πεδία id (UUID / Pod name), user_id / username, profile (developer, data-analyst, devops), status (Creating, Scanning, Remediating, Running, Terminated), pod_ip και node_port / url (για να ανοίγει ο χρήστης το VS Code) και created_at.
+
+Ο πίνακας audit_logs (Compliance Evidence) αποθηκεύει τα αποτελέσματα των ελέγχων για το Tab 3 του Admin. Έχει τα πεδία id, workstation_id (foreign key), stage (Image Scan, Manifest Check, Admission Gate, Bootstrap), violations_found (JSONB, ποιες παραβάσεις βρέθηκαν), remediations_applied (JSONB, τι διόρθωσε αυτόματα ο Manager) και status (PASSED, REMEDIATED, REJECTED).
+
+Επόμενα βήματα (Step 3, Node.js Manager & Database Setup): δημιουργία του docker-compose.yaml (ή K8s manifests) στο VM 100 για να σηκωθεί η PostgreSQL, και αρχικοποίηση του Node.js project με δημιουργία φακέλου ~/thesis-workstations/manager και εγκατάσταση των βασικών πακέτων express, pg (PostgreSQL client), yaml (YAML AST parsing για το remediation) και @kubernetes/client-node.
+
+
+17. Τι Πρέπει να Γίνει Πριν τα Rules
+
+Πριν το "κυρίως πιάτο", δηλαδή τους κανόνες ISO/CIS, το YAML AST parsing και το auto-remediation, πρέπει να γεφυρωθεί το χάσμα μεταξύ του Node.js Manager και του k3s. Δεν μπορούν να εφαρμοστούν κανόνες διόρθωσης σε Kubernetes manifests αν το εργαλείο δεν ξέρει πώς να μιλήσει στο cluster για να σηκώσει έστω ένα απλό Pod.
+
+Τα τρία άμεσα βήματα πριν τους κανόνες είναι τα εξής.
+
+Πρώτο, η ενσωμάτωση του Kubernetes API client (k8s.js). Αξιοποιείται το πακέτο @kubernetes/client-node που είναι ήδη εγκατεστημένο, και γράφεται ο κώδικας που φορτώνει το kubeconfig του k3s, ώστε ο Express server να αποκτήσει τα απαραίτητα δικαιώματα (credentials) για να δίνει εντολές στο cluster.
+
+Δεύτερο, η αντικατάσταση του mock provisioning με real provisioning. Στο endpoint /api/workstations/request αφαιρείται η εικονική (mock) λογική και γράφεται ένα βασικό, "γυμνό" (un-hardened) Kubernetes manifest (YAML/JSON για Pod και Service) που περιέχει το image που επέλεξε ο χρήστης.
+
+Τρίτο, το end-to-end test δημιουργίας. Ο στόχος είναι με "Launch" στο UI το Node.js να στέλνει πραγματικά το manifest στο k3s, το k3s να σηκώνει το workstation Pod και να επιστρέφει την πραγματική IP ή το NodePort, το οποίο αποθηκεύεται στη βάση.
+
+Μόλις σηκωθεί ένα απλό, "απροστάτευτο" workstation με ένα κλικ, τότε παρεμβάλλεται ο μηχανισμός των rules (Trivy API και auto-remediation) στη μέση της διαδρομής.
+
+Πριν αρχίσει η δουλειά με την ασφάλεια, ο βασικός "σωλήνας" (η διαδρομή UI → Backend → k3s → Database) πρέπει να είναι ανοιχτός, καθαρός και πλήρως λειτουργικός. Αν δεν δουλεύει το "happy path", δηλαδή η απλή δημιουργία ενός λειτουργικού περιβάλλοντος, δεν μπορούν να χτιστούν πολύπλοκα συστήματα και έλεγχοι από πάνω.
+
+Η στρατηγική για αυτή τη φάση
+
+Για να περάσει η υλοποίηση στο "ζουμί" της διπλωματικής, δηλαδή στο auto-remediation και στην επιβολή των ISO/CIS controls, πρέπει πρώτα να υπάρχει σημείο αναφοράς. Για να αποδειχθεί ότι ο Manager κάνει δουλειά, το σύστημα πρέπει από προεπιλογή να σηκώνει "γυμνά", απροστάτευτα workstations. Έτσι, όταν αργότερα ενεργοποιούνται τα checkboxes των κανόνων στο UI, φαίνεται ο κώδικας να παρεμβαίνει, να αλλάζει δυναμικά το manifest και να διορθώνει τα κενά ασφαλείας πριν το deployment.
+
+Ο μηχανισμός που στήνεται τώρα κάνει τρία πράγματα. Επικοινωνεί με το k3s, αφού το Express backend σταματά να "προσποιείται" και μιλάει πραγματικά με το Kubernetes API. Δημιουργεί λειτουργικό Pod, σηκώνοντας το container του OpenVSCode Server (π.χ. το profile του Developer). Καταγράφει στη βάση την πραγματική IP ή το port που έδωσε το k3s, στον πίνακα workstation_requests, ώστε ο χρήστης να μπορεί να κάνει κλικ στο URL και να δουλέψει.
+
+
+18. Από το Mock στο Real Provisioning
+
+Τώρα που ο Manager έχει τα "κλειδιά" του k3s (μέσω του k8s.js), η επόμενη δουλειά γίνεται στο κεντρικό αρχείο του backend, το server.js, όπου αφαιρείται η εικονική (mock) λογική. Ο στόχος αυτού του βήματος είναι ο κώδικας που κάνει το πραγματικό deployment.
+
+Για τη σύνδεση με το k3s, γίνεται require το k8s.js στην κορυφή του server.js.
+
+Για το χτίσιμο του manifest, μέσα στο endpoint /api/workstations/request, αντί να παράγονται εικονικά δεδομένα, γράφεται ένα βασικό, "γυμνό" Kubernetes manifest σε μορφή JSON που περιέχει το Pod (με το image που επέλεξε ο χρήστης) και ένα Service που εκθέτει την πόρτα 3000 του VS Code.
+
+Για την αποστολή στο cluster, χρησιμοποιείται η k8sCoreApi.createNamespacedPod() ώστε να σταλεί το αίτημα στο k3s.
+
+Για την καταγραφή στη βάση, το σύστημα παίρνει την πραγματική IP ή το NodePort που άνοιξε το k3s και τα γράφει στον πίνακα workstation_requests, ώστε ο χρήστης να έχει το σωστό URL.
+
+Το Pod που σηκώνεται τώρα είναι επίτηδες απροστάτευτο (un-hardened) και αποτελεί το σημείο αναφοράς (baseline). Μόλις επιβεβαιωθεί ότι ο χρήστης πατάει το κουμπί στο UI και το k3s σηκώνει επιτυχώς το περιβάλλον, τότε μπαίνει στη μέση αυτής της διαδρομής ο μηχανισμός των rules και του auto-remediation.
+
+Για να δουλέψει στην πράξη το URL και να ανοίγει το VS Code από τον browser του laptop, δεν αρκεί μόνο ένα Pod. Χρειάζεται και ένα Service (NodePort). Το k3s δίνει μια τυχαία θύρα (π.χ. 31234) μέσω της οποίας γίνεται η πρόσβαση στο workstation.
+
+
+19. Κώδικας, GitHub και Deployment στο VM
+
+Ερώτηση: Δεν καταλαβαίνω, λες να αφήσουμε εδώ όλο αυτό; Να τραβήξω τον κώδικά μου από το VM στο local repository, να κάνω commit και να ανεβάσω στο GitHub repo με push; Από εκεί τι μπορώ να κάνω; Να στήσω ένα pipeline που θα κάνει τι; Θα ενημερώνει αυτόματα τον κώδικα στο VM; Και με τις εντολές που πρέπει να τρέξουν στο τερματικό του VM τι γίνεται;
+
+Εδώ πρόκειται για δύο διαφορετικά πράγματα που συχνά μπερδεύονται: άλλο η διαχείριση του κώδικα (GitHub) και άλλο η εκτέλεση των εντολών και το deployment στο VM (CI/CD pipeline).
+
+Η καθαρή ροή κώδικα είναι Local → GitHub. Ο κώδικας κρατιέται στο τοπικό PC (laptop), όπου η επεξεργασία είναι άνετη, και μετά γίνονται git add, git commit και git push στο προσωπικό GitHub repository.
+
+Από το GitHub στο VM, ρόλο παίζει το CI/CD pipeline. Επειδή ο κώδικας ανέβηκε στο GitHub, το VM (το k3s-master στο Proxmox) δεν ξέρει "μαγικά" ότι άλλαξε κάτι. Εδώ μπαίνει ένα pipeline (π.χ. GitHub Actions): κάθε φορά που γίνεται git push, το GitHub Actions ενεργοποιείται αυτόματα, συνδέεται με ασφάλεια στο VM μέσω SSH και εκτελεί μόνο του τις απαραίτητες εντολές στο τερματικό του VM.
+
+Οι εντολές που πρέπει να τρέξουν στο τερματικό του VM δεν χάνονται. Αντί να τρέχουν χειροκίνητα κάθε φορά που αλλάζει μια γραμμή κώδικα, γράφονται μέσα σε ένα script αυτοματισμού (π.χ. deploy.sh), το οποίο τρέχει το pipeline στο VM.
+
+Το πρακτικό σενάριο (GitHub Actions runner στο VM ή SSH deployment) έχει δύο κομμάτια.
+
+Το πρώτο είναι το script στο VM (deploy.sh). Φτιάχνεται μία φορά στο VM, στον φάκελο ~/thesis-workstations, ένα αρχείο που περιέχει όλες τις εντολές που χρειάζεται το σύστημα για να ενημερωθεί:
+
+    #!/bin/bash
+    cd ~/thesis-workstations/manager
+    git pull origin main       # Τραβάει τον νέο κώδικα από το GitHub
+    npm install                # Εγκαθιστά τυχόν νέες βιβλιοθήκες
+    pm2 restart server         # Κάνει επανεκκίνηση τον Node.js server χωρίς downtime
+
+Το δεύτερο είναι το GitHub Actions workflow (.github/workflows/deploy.yml). Στο repository στο GitHub φτιάχνεται ο φάκελος .github/workflows/ με ένα αρχείο YAML που λέει στο GitHub: "Όταν γίνει push, συνδέσου στο Proxmox VM μου και τρέξε το script":
+
+    name: Deploy to Proxmox VM
+    on:
+      push:
+        branches: [ main ]
+    jobs:
+      deploy:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Executing remote ssh commands
+            uses: appleboy/ssh-action@master
+            with:
+              host: 192.168.1.248   # Η IP του VM σου στο Proxmox
+              username: root1       # Ο χρήστης σου στο VM
+              key: ${{ secrets.SSH_PRIVATE_KEY }} # Το κλειδί ασφαλείας σου
+              script: |
+                cd ~/thesis-workstations
+                ./deploy.sh          # Εκτελεί αυτόματα τις εντολές στο VM!
+
+Με αυτόν τον τρόπο ο κώδικας γράφεται τοπικά, γίνεται git push, και το GitHub αναλαμβάνει να στείλει τον κώδικα στο VM και να τρέξει μόνο του τις εντολές (git pull, npm install, restart) στο τερματικό του VM, χωρίς να χρειάζεται SSH για απλή ενημέρωση κώδικα.
+
+Ερώτηση: Θα έπρεπε να το κάνω αυτό από την αρχή;
+
+Όχι. Αυτό που έγινε μέχρι τώρα, δηλαδή το στήσιμο του Proxmox, το Ubuntu VM, το k3s, το χτίσιμο των containers και η επιβεβαίωση ότι η βάση επικοινωνεί με τον Node.js Manager, έπρεπε να γίνει ακριβώς έτσι, χειροκίνητα. Αυτή είναι η πειραματική υποδομή και η βάση της διπλωματικής. Χωρίς αυτή τη διαδικασία και την τριβή με τα logs, το k3s και τα namespaces, δεν θα ήταν κατανοητό πώς δουλεύει το σύστημα ούτε θα μπορούσε να γραφτεί το κεφάλαιο της υλοποίησης.
+
+Το CI/CD pipeline ή το automation script δεν αντικαθιστά την υποδομή. Είναι το επόμενο επίπεδο, που κάνει πιο εύκολες τις δοκιμές.
+
+Τώρα που η βάση, ο Manager και το k3s μιλάνε μεταξύ τους, υπάρχουν δύο επιλογές. Η πρώτη είναι να συνεχίσει η δουλειά χειροκίνητα στο VM: γίνονται οι αλλαγές και απλά επανεκκινείται ο server (node server.js). Για μια διπλωματική εργασία αυτό είναι πολύ συνηθισμένο και απόλυτα αποδεκτό. Η δεύτερη είναι να προχωρήσει η υλοποίηση στο "ζουμί" της εργασίας, δηλαδή στην προσθήκη των κανόνων συμμόρφωσης (auto-remediation και YAML AST parsing). Η αυτοματοποίηση μπορεί να μείνει για το τέλος ή να αναφερθεί ως μελλοντική επέκταση.
+
+Ερώτηση: Μα δεν ξέρω κάθε φορά τι αλλαγές κάνω. Μου αρέσει να μπορώ να κάνω rollback. Πριν ανεβάσω στο pipeline, πώς θα μπορώ να δοκιμάσω τοπικά;
+
+Το να υπάρχει δυνατότητα rollback (επιστροφή σε προηγούμενη σταθερή κατάσταση αν κάτι σπάσει) και δοκιμής τοπικά πριν σπρωχτεί οτιδήποτε παραπέρα είναι ακριβώς ο λόγος που χρησιμοποιούνται το Git και τα τοπικά περιβάλλοντα δοκιμών. Δεν χρειάζεται κανένα περίπλοκο cloud pipeline για αυτό. Γίνεται τοπικά στο VM ή στο laptop με τρία απλά βήματα.
+
+Rollback αν κάτι σπάσει (git revert / reset)
+
+Αφού ο κώδικας είναι σε Git repository, υπάρχει πάντα μια "χρονομηχανή". Αν, για παράδειγμα, άλλαξε το server.js και ο server σταμάτησε να δουλεύει, τότε αν δεν έχει γίνει commit, οι αλλαγές στο συγκεκριμένο αρχείο ακυρώνονται αμέσως με:
+
+    git checkout server.js
+
+Αν έχει γίνει commit και χρειάζεται επιστροφή στην προηγούμενη καλή κατάσταση, βρίσκεται το προηγούμενο commit id με git log και γίνεται επαναφορά με:
+
+    git reset --hard HEAD~1
+
+Έτσι το σύστημα γυρίζει αμέσως ακριβώς εκεί που δούλευε.
+
+Δοκιμή τοπικά πριν από οτιδήποτε σε παραγωγή
+
+Η βασική αρχή είναι ότι ποτέ δεν πειράζεται ζωντανά ο κώδικας παραγωγής (production). Για ασφαλείς δοκιμές ακολουθείται η ροή των Git branches.
+
+Πρώτα φτιάχνεται ένα νέο branch για δοκιμή, όπου γίνονται οι αλλαγές, οι πειραματισμοί και η προσθήκη κώδικα:
+
+    git checkout -b feature/test-remediation
+
+Μετά γίνεται τοπική εκτέλεση και έλεγχος: ο server ξεκινά τοπικά (node server.js), ανοίγει το UI, πατιέται το κουμπί και ελέγχονται τα logs στο τερματικό. Αν κάτι αποτύχει δεν πειράζει, γιατί ο κύριος κώδικας στο main είναι ανέπαφος.
+
+Αν η δοκιμή πετύχει, τότε και μόνο τότε γίνεται git commit, επιστροφή στο κεντρικό branch και ενσωμάτωση των αλλαγών:
+
+    git checkout main
+    git merge feature/test-remediation
+
+Με αυτόν τον τρόπο υπάρχει ασφάλεια, αφού οι δοκιμές γίνονται πάντα σε απομονωμένο branch, υπάρχει rollback, αφού ό,τι κι αν χαλάσει, με μια εντολή git γίνεται επιστροφή σε δευτερόλεπτα, και η διπλωματική δείχνει ότι ακολουθούνται επαγγελματικές μεθοδολογίες ανάπτυξης λογισμικού (version control και safe branching).
+
+
+20. Σύνοψη: Εισαγωγή του Pipeline Ασφάλειας και Auto-Remediation
+
+Ερώτηση: Σούμα για επόμενο βήμα, την εισαγωγή ενός pipeline.
+
+Αυτό το pipeline αποτελεί τον "εγκέφαλο" και τον πυρήνα της διπλωματικής (Manager / glue layer). Στόχος του δεν είναι ένα cloud CI/CD, αλλά η εσωτερική ροή που εκτελείται αυτόματα κάθε φορά που ο developer ζητάει workstation.
+
+Η αρχιτεκτονική ροή του pipeline:
+
+    [ Request από UI ] ──► [ Stage 1: Image Scan (Trivy) ] ──► [ Stage 2: Manifest Validation & Auto-Remediation ] ──► [ Stage 3: Admission Gate ] ──► [ Stage 4: Deploy στο k3s ] ──► [ Audit Logging ]
+
+Τα επόμενα βήματα υλοποίησης είναι τα εξής.
+
+Stage 1, Image Vulnerability & Malware Scanning (ISO 27036 / A.8.7): Πριν το k3s σηκώσει οποιοδήποτε container, ο Manager καλεί το API ή το CLI του Trivy για να σκανάρει το base image του profile (π.χ. workstation-profile:developer). Αν βρεθούν κρίσιμες ευπάθειες (critical CVEs) ή malware signatures, το deployment ακυρώνεται αυτόματα.
+
+Stage 2, Manifest Validation & YAML AST Parsing / Auto-Remediation (ISO 27002 A.8.9): Ο Manager λαμβάνει το αρχικό "γυμνό" Kubernetes manifest (podManifest) και ελέγχει το περιεχόμενό του βάσει των ενεργών κανόνων από τη βάση δεδομένων (policy set / CIS Benchmarks). Αν λείπουν ρυθμίσεις ασφαλείας (π.χ. runAsUser: 1000, readOnlyRootFilesystem: true, resource limits), ο κώδικας επεμβαίνει αυτόματα στο AST (Abstract Syntax Tree) του YAML και διορθώνει τις παραμέτρους πριν προχωρήσει.
+
+Stage 3, Admission & Deployment στο k3s (ISO 27017): Το διορθωμένο και πλέον πλήρως compliant manifest αποστέλλεται μέσω του Kubernetes API (k8sCoreApi.createNamespacedPod) στο k3s cluster.
+
+Stage 4, Bootstrap Verification & Audit Logging (ISO 27001 A.8.15): Μετά την επιτυχή εκκίνηση του Pod και τη δημιουργία του Service (NodePort), το σύστημα καταγράφει αμετάβλητα audit logs σε μορφή JSON στον πίνακα audit_logs της PostgreSQL. Τα logs αυτά αποδεικνύουν στην επιτροπή ή στον auditor ποιες παραβάσεις εντοπίστηκαν και τι ακριβώς διορθώθηκε αυτόματα.
+
+
+21. Η Τελική Ροή Ανάπτυξης
+
+Ερώτηση: Θα στήσω το project στο PC μου. Ο κώδικας θα είναι σε Git, αν δοκιμάζω και δουλεύει, με στημένο το pipeline θα ανεβαίνει στον Proxmox server. Σωστά;
+
+Ναι, αυτή είναι η σωστή και πιο ξεκούραστη ροή (local development και continuous deployment). Στο τοπικό PC (development και testing) γράφεται ο κώδικας, δοκιμάζονται οι αλλαγές τοπικά, και όταν όλα δουλεύουν γίνεται git push στο GitHub. Στον Proxmox server (production) το pipeline τραβάει τον νέο, δοκιμασμένο κώδικα από το Git και τον ενημερώνει αυτόματα στο VM.
+
+Ερώτηση: Αλλά εκεί θα πρέπει να δώσω και τις εντολές για το pipeline.
+
+Ακριβώς. Εκεί ορίζονται οι εντολές που εκτελούνται αυτόματα, δηλαδή το deployment script ή workflow. Όταν στηθεί, το pipeline θα τρέχει αυτόματα στο VM σε κάθε push τρεις βασικές εντολές τερματικού: git pull, ώστε να κατεβαίνει ο νέος κώδικας από το αποθετήριο, npm install, ώστε να ενημερώνονται τυχόν νέες βιβλιοθήκες και εξαρτήσεις του Manager, και pm2 restart workstation-manager, ώστε να γίνεται επανεκκίνηση του Node.js server και να εφαρμόζονται άμεσα οι αλλαγές χωρίς να πέσει η υποδομή.
+
+Με αυτόν τον τρόπο το τοπικό PC γίνεται το περιβάλλον ανάπτυξης (development) και το Proxmox VM το περιβάλλον εκτέλεσης (production).
+
+
+
+22. Ενημέρωση (15/10/2026): Το Compliance Engine ως Ξεχωριστό Εργαλείο
+
+Με την ολοκλήρωση της Φάσης 1 (πλατφόρμα και DevOps), αποφασίστηκε ο μηχανισμός συμμόρφωσης της Φάσης 2 να μην υλοποιηθεί μέσα στον Manager, αλλά ως ξεχωριστό, αυτόνομο εργαλείο: το Compliance Engine (φάκελος compliance-engine/ στο repository).
+
+Τι αλλάζει σε σχέση με τις προηγούμενες ενότητες:
+- §6 (Internal Security & Remediation Pipeline): τα στάδια του pipeline παραμένουν ίδια, αλλά οι έλεγχοι και οι διορθώσεις τους εκτελούνται από το Compliance Engine. Ο Manager το καλεί (POST /evaluate) και κάνει deploy το διορθωμένο manifest που επιστρέφεται.
+- §8 και §12 (UI): οι διακόπτες ON/OFF των κανόνων μεταφέρονται από το /admin της πλατφόρμας στο δικό UI του εργαλείου, για τον υπεύθυνο ασφαλείας (διαχωρισμός καθηκόντων, ISO A.5.3).
+- Το εργαλείο έχει επιπλέον admission webhook, ώστε ο έλεγχος να γίνεται για ό,τι μπαίνει στο cluster, ακόμα κι αν δεν περάσει από την πλατφόρμα.
+
+Γιατί: το εργαλείο γίνεται μεταφέρσιμο (οποιαδήποτε πλατφόρμα, οποιοδήποτε cluster, και στη μετάβαση στο cloud), ανεξάρτητο από γλώσσα (HTTP), μετρήσιμο (σύγκριση πριν/μετά) και διακρίνεται καθαρά ως η ερευνητική συνεισφορά της εργασίας.
+
+Όρια: το εργαλείο ελέγχει, διορθώνει όσα μπορεί και αποδεικνύει. Η ασφάλεια της ίδιας της πλατφόρμας, το hardening των images στο build και το στήσιμο της υποδομής μένουν εκτός, και τεκμηριώνονται ως ευθύνες της πλατφόρμας στο compliance-engine/integration-instructions.md.
+
+Αναλυτικά: 08-workflow.docx, Step 17, και compliance-engine/about.md.

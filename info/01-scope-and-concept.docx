@@ -1,0 +1,15 @@
+Έλεγχος Συμμόρφωσης (Compliance) και Αυτόματη Αποκατάσταση σε On-Demand Cloud-Native Workstations
+
+Το σύνολο των κανόνων θα προέρχεται είτε από συγκεκριμένο standard (CIS Benchmarks, ISO 27001) είτε από custom policy set με κανόνες από διάφορες πηγές.
+
+Θα δημιουργηθούν διαφορετικά workstations για διαφορετικές ανάγκες (διαφορετικά προεγκατεστημένα IDE, runtimes και εργαλεία ανά profile), με βάση ένα ήδη διαδεδομένο image ή pod (π.χ. Gitpod, GitHub Codespaces).
+
+Για κάθε profile, ο έλεγχος compliance θα γίνεται σε επιμέρους στάδια κατά τη δημιουργία: στην επιλογή και σύνθεση του image (προέλευση, ευπάθειες, ποια εργαλεία προεγκαθίστανται), στη σύνταξη των Kubernetes manifests αν γίνει με Kubernetes (security context, resource limits, network policies, χειρισμός secrets), σε ένα admission gate πριν το deployment που θα απορρίπτει ό,τι δεν συμμορφώνεται, και στο bootstrap και την εγκατάσταση dependencies.
+
+Μόλις ολοκληρωθεί η δημιουργία του container, θα τρέχει ένας τελικός συγκεντρωτικός έλεγχος που θα επιβεβαιώνει ότι το workstation είναι compliant τη στιγμή που παραδίδεται στον χρήστη.
+
+Τεχνικά, θα δημιουργηθεί ένα glue layer που θα ελέγχει κάθε στάδιο δημιουργίας ως προς το policy set και, σε περίπτωση non-compliance, θα κάνει trigger αυτόματο remediation πριν προχωρήσει στο επόμενο στάδιο, ώστε το αποτέλεσμα να είναι ένα known-good, compliant container.
+
+Η δημιουργία του workstation μπορεί προαιρετικά να γίνει και σε VM εκτός από container.
+
+Ως επέκταση, θα υπάρχει continuous έλεγχος κατά το runtime για drift μετά από αλλαγές του χρήστη.

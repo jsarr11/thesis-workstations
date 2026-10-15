@@ -1,5 +1,7 @@
-# Private info & context folder
-info/
+# Private info files (the rest of info/ is tracked)
+# 07: credentials · 08: lab log containing passwords in plain text (public repo)
+info/07-proxmox-credentials.docx
+info/08-workflow.docx
 
 # Environment files & Secrets
 .env

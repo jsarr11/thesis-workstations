@@ -1,0 +1,146 @@
+Workstation Profiles και Αρχιτεκτονική των Cloud-Native Development Environments
+
+
+Εισαγωγή
+
+Το έγγραφο αυτό ορίζει την τεχνική αρχιτεκτονική, τον τρόπο λειτουργίας και τις προδιαγραφές των διαφορετικών workstation profiles (Software Developer, Data Analyst, DevOps / Cloud Security) στο πλαίσιο της διπλωματικής εργασίας. Περιγράφει τη δομή του OpenVSCode Server, τα εργαλεία και τα extensions κάθε profile, καθώς και τους κανόνες συμμόρφωσης (ISO/IEC 27001 Annex A.8 και CIS Benchmarks) που επιβάλλονται αυτόματα από τον Manager (glue layer).
+
+
+1. Αρχιτεκτονική του Workstation (OpenVSCode Server Container)
+
+Τα workstations υλοποιούνται ως Kubernetes Pods στο k3s cluster και βασίζονται στον OpenVSCode Server. Ο χρήστης αποκτά πρόσβαση μέσω browser, χωρίς τοπική εγκατάσταση εργαλείων και χωρίς πλήρες γραφικό περιβάλλον (desktop/GUI).
+
+Το web interface είναι ένα πλήρες περιβάλλον VS Code μέσα στον browser, με text editor, file explorer, terminal, source control και extensions.
+
+Το περιβάλλον εκτέλεσης είναι ένα απομονωμένο Linux container με προεγκατεστημένα runtimes, compilers, package managers και CLI εργαλεία. Το λειτουργικό σύστημα είναι Ubuntu, όπως ορίζεται από το upstream image του OpenVSCode Server πάνω στο οποίο χτίζονται όλα τα profiles. Το Alpine δεν χρησιμοποιείται, γιατί ο OpenVSCode Server απαιτεί glibc, ενώ το Alpine χρησιμοποιεί musl.
+
+Για την πρόσβαση σε web υπηρεσίες που σηκώνει ο χρήστης μέσα στο workstation (π.χ. μια React ή Node εφαρμογή στο port 3000), η αντίστοιχη θύρα πρέπει να εκτεθεί προς τα έξω, μέσω Kubernetes Service ή Ingress που δημιουργεί ο Manager, ώστε η εφαρμογή να ανοίγει σε νέα καρτέλα του browser.
+
+
+2. Τα Profiles και οι Προδιαγραφές τους
+
+Κοινοί κανόνες για όλα τα profiles
+
+Οι βασικοί κανόνες του πυρήνα (Tier 1) εφαρμόζονται σε κάθε workstation, ανεξάρτητα από το profile: εκτέλεση ως non-root χρήστης (USER 1000), allowPrivilegeEscalation: false, απαγόρευση privileged containers, drop όλων των Linux capabilities, απομόνωση σε namespace διαφορετικό από το default, σάρωση του image πριν το deployment και καταγραφή κάθε διόρθωσης. Οι κανόνες που περιγράφονται παρακάτω ανά profile είναι αυτοί στους οποίους κάθε profile διαφοροποιείται ή δίνει ιδιαίτερη έμφαση.
+
+
+2.1 Profile 1: Developer (Software / Web Engineer)
+
+Το profile αυτό απευθύνεται σε ανάπτυξη εφαρμογών, microservices, APIs και web interfaces.
+
+Περιεχόμενο του container: Το λειτουργικό είναι Ubuntu μέσω του κοινού hardened base image. Τα runtimes και SDKs είναι Node.js (LTS), Python 3, Go SDK και OpenJDK 17. Οι package managers είναι npm, yarn και pip. Τα CLI εργαλεία είναι git, curl, jq, build-essential και make. Τα VS Code extensions είναι ESLint, Prettier, GitLens, Docker και REST Client / Thunder Client.
+
+Κανόνες συμμόρφωσης που επιβάλλει ο Manager:
+
+Resource limits (ISO A.8.6): τυπική κατανομή πόρων, με limits.cpu: "1000m", limits.memory: "1Gi", requests.cpu: "250m" και requests.memory: "512Mi".
+
+Ασφάλεια χρήστη (ISO A.8.28, CIS Docker 4.1): υποχρεωτική εκτέλεση ως non-root, USER 1000.
+
+Απομόνωση δικτύου (ISO A.8.20 και A.8.22): NetworkPolicy που επιτρέπει εξερχόμενη κίνηση μόνο προς τα επίσημα package registries (npm, PyPI) και προς το namespace της τοπικής βάσης δεδομένων ανάπτυξης. Τα standard Kubernetes NetworkPolicies φιλτράρουν μόνο με βάση IP, CIDR, namespaces και labels, όχι με βάση domain name. Ο περιορισμός ανά domain (π.χ. registry.npmjs.org) απαιτεί είτε CNI με υποστήριξη FQDN policies (π.χ. Cilium) είτε egress proxy μέσα από τον οποίο περνάει η κίνηση των workstations.
+
+
+2.2 Profile 2: Data Analyst / Data Scientist
+
+Το profile αυτό απευθύνεται σε επεξεργασία δεδομένων, στατιστική ανάλυση, μηχανική μάθηση και οπτικοποίηση.
+
+Περιεχόμενο του container: Το λειτουργικό είναι Ubuntu μέσω του κοινού base image (data science έκδοση). Τα runtimes και περιβάλλοντα είναι Python 3.10 ή νεότερη, R και Jupyter core engine. Οι βιβλιοθήκες και τα εργαλεία είναι Pandas, NumPy, Scikit-learn, Matplotlib, Seaborn, DuckDB, psql client και sqlite3. Τα VS Code extensions είναι Python, Jupyter, Data Wrangler και SQL Tools.
+
+Κανόνες συμμόρφωσης που επιβάλλει ο Manager:
+
+Resource limits (ISO A.8.6): αυξημένη κατανομή πόρων, με limits.cpu: "2000m" και limits.memory: "4Gi", για υποστήριξη επεξεργασίας δεδομένων στη μνήμη.
+
+Πρόληψη διαρροής δεδομένων (ISO A.8.12, CIS Docker σύσταση για read-only root filesystem, 5.12 σε παλαιότερες εκδόσεις): επιβολή readOnlyRootFilesystem: true στο securityContext του Pod, με προσάρτηση απομονωμένου persistent volume αποκλειστικά για τα datasets. Επειδή ο OpenVSCode Server, το Jupyter και τα Python πακέτα χρειάζονται δυνατότητα εγγραφής, προσαρτώνται επιπλέον εγγράψιμα volumes μόνο για τα απαραίτητα σημεία: τον φάκελο του χρήστη (home) και το /tmp (π.χ. ως emptyDir). Όλο το υπόλοιπο filesystem παραμένει μόνο για ανάγνωση.
+
+Κλιμάκωση δικαιωμάτων (ISO A.8.2, CIS Kubernetes σύσταση για allowPrivilegeEscalation, 5.2.5 στις εκδόσεις έως 1.7): allowPrivilegeEscalation: false και drop capabilities: ["ALL"].
+
+
+2.3 Profile 3: DevOps / Cloud Security Engineer
+
+Το profile αυτό απευθύνεται σε διαχείριση υποδομών, Infrastructure as Code (IaC), ελέγχους ασφαλείας και automation pipelines.
+
+Περιεχόμενο του container: Το λειτουργικό είναι Ubuntu μέσω του κοινού hardened base image, σε ελάχιστη μορφή. Τα εργαλεία IaC και cloud είναι kubectl, helm, terraform και docker-cli / nerdctl. Τα CLI αυτά δεν έχουν πρόσβαση στο container runtime του host (δεν προσαρτάται το docker.sock ή το containerd.sock), γιατί αυτό θα ισοδυναμούσε με πλήρη έλεγχο του node. Οι security scanners είναι trivy, checkov και kube-bench. Τα βοηθητικά CLI είναι git, yq, bash-completion, openssl, netcat και dig. Τα VS Code extensions είναι Kubernetes, HashiCorp Terraform, YAML Lint και ShellCheck.
+
+Κανόνες συμμόρφωσης που επιβάλλει ο Manager:
+
+Έλεγχος πρόσβασης RBAC (ISO A.8.2 και A.8.3): αυστηρός περιορισμός της πρόσβασης στο Kubernetes API μέσω αποκλειστικού ServiceAccount με τα ελάχιστα απαραίτητα δικαιώματα (least privilege), περιορισμένο στο namespace του workstation.
+
+Security context (CIS Kubernetes σύσταση για privileged containers, 5.2.1 στις εκδόσεις έως 1.7): απαγόρευση του privileged: true και αποκλεισμός πρόσβασης στα host IPC και PID namespaces.
+
+Σάρωση της εφοδιαστικής αλυσίδας του image (ISO A.8.7, A.8.8 και ISO/IEC 27036): σάρωση όλου του image με Trivy για γνωστές ευπάθειες πριν την έγκριση του deployment, με κριτήριο 0 Critical και 0 High CVEs (A.8.8), και σάρωση με malware scanner, π.χ. ClamAV (A.8.7). Το Trivy καλύπτει ευπάθειες, misconfigurations και secrets, αλλά όχι malware.
+
+
+3. Συγκριτική Παρουσίαση των Profiles
+
+Developer: κύρια χρήση η ανάπτυξη web εφαρμογών και λογισμικού. Πόροι 1 vCPU και 1 GB RAM. Κύριοι έλεγχοι ISO/IEC 27002: A.8.6, A.8.9, A.8.20, A.8.22, A.8.28. Έμφαση CIS: CIS Docker 4.1 (non-root USER 1000).
+
+Data Analyst: κύρια χρήση η επεξεργασία δεδομένων και η μηχανική μάθηση. Πόροι 2 vCPUs και 4 GB RAM. Κύριοι έλεγχοι ISO/IEC 27002: A.8.2, A.8.6, A.8.12, A.8.31. Έμφαση CIS: read-only root filesystem και απομόνωση volumes.
+
+DevOps / Security: κύρια χρήση το IaC και οι έλεγχοι ασφαλείας. Πόροι 1 vCPU και 2 GB RAM. Κύριοι έλεγχοι ISO/IEC 27002: A.8.2, A.8.3, A.8.7, A.8.8, A.8.25, A.8.27. Έμφαση CIS: ενότητες 5.2 (non-privileged containers) και 5.1 (RBAC) του CIS Kubernetes Benchmark.
+
+Οι έλεγχοι αυτοί προστίθενται στους κοινούς κανόνες της ενότητας 2, που ισχύουν για όλα τα profiles.
+
+
+4. Ο Κύκλος Auto-Remediation του Manager ανά Profile
+
+Όταν ο χρήστης ή ο Admin ζητά τη δημιουργία ενός workstation, η διαδικασία έχει πέντε βήματα.
+
+Επιλογή profile και κανόνων: ο Manager διαβάζει τις παραμέτρους του αιτήματος (τύπος profile) και τους ενεργούς κανόνες ασφαλείας από τη βάση δεδομένων, όπως τους έχει ορίσει ο Admin στο UI.
+
+Stage 1, επαλήθευση image: εκτελείται σάρωση στο image του επιλεγμένου profile (π.χ. workstation-profile:data-analyst).
+
+Stage 2, auto-remediation του manifest: ο Manager εξετάζει το παραγόμενο Kubernetes manifest και διορθώνει ή προσθέτει αυτόματα τα απαραίτητα security contexts, τα resource limits, το non-root user ID, το read-only filesystem και τα network policies, ανάλογα με το profile.
+
+Stage 3, admission και deployment: το συμμορφωμένο manifest υποβάλλεται στο k3s cluster, όπου περνά από το admission gate.
+
+Stage 4, audit logging: παράγεται δομημένο JSON audit log με όλες τις αυτόματες διορθώσεις, το οποίο αποθηκεύεται στη βάση και εμφανίζεται στο UI.
+
+
+5. Επιλογή και Δομή των Images
+
+Η αρχιτεκτονική των images βασίζεται σε τρία ξεχωριστά Dockerfiles, ένα για κάθε profile, τα οποία κληρονομούν από ένα κοινό base image. Η προσέγγιση αυτή είναι η πιο καθαρή και συντηρήσιμη.
+
+Το κοινό base image (Dockerfile.base)
+
+Το base image περιέχει μόνο όσα χρειάζονται όλα τα workstations: το λειτουργικό σύστημα (Ubuntu, από το upstream image), τον OpenVSCode Server ως web IDE, τη δημιουργία του non-root χρήστη (USER 1000) και βασικά εργαλεία (git, curl, jq, unzip). Χτίζεται μία φορά (π.χ. workstation-base:v1) και αποτελεί τη βάση όλων των profiles. Ξεκινά από το έτοιμο image της κοινότητας:
+
+    FROM gitpod/openvscode-server:<συγκεκριμένη έκδοση>
+
+Χρησιμοποιείται συγκεκριμένο tag και όχι το latest, ώστε το build να είναι αναπαραγώγιμο και το αποτέλεσμα του vulnerability scan να αντιστοιχεί σε γνωστή έκδοση.
+
+Τα τρία εξειδικευμένα Dockerfiles
+
+Κάθε profile έχει δικό του Dockerfile που ξεκινά με FROM workstation-base:v1.
+
+Το Dockerfile.developer προσθέτει Node.js, Python 3, Go SDK, npm, pip και τα extensions για web development, και παράγει το image workstation-profile:developer.
+
+Το Dockerfile.data-analyst προσθέτει Jupyter core, Pandas, NumPy, Scikit-learn, R, psql client και τα extensions για δεδομένα, και παράγει το image workstation-profile:data-analyst.
+
+Το Dockerfile.devops προσθέτει kubectl, helm, terraform, trivy, checkov και τα extensions για Kubernetes και YAML, και παράγει το image workstation-profile:devops.
+
+Γιατί τρία Dockerfiles και όχι ένα ενιαίο
+
+Ο πρώτος λόγος είναι η ασφάλεια, μέσω ελάχιστης επιφάνειας επίθεσης (minimal attack surface). Αν όλα τα εργαλεία βρίσκονταν σε ένα image, ο developer θα είχε πρόσβαση σε εργαλεία διαχείρισης υποδομής του DevOps profile (π.χ. kubectl, helm), κάτι που αντίκειται στην αρχή του least privilege. Επιπλέον, όσο λιγότερα binaries περιέχει ένα image, τόσο λιγότερες πιθανές ευπάθειες (CVEs) υπάρχουν για να εντοπιστούν.
+
+Ο δεύτερος λόγος είναι οι επιδόσεις και το μέγεθος. Ένα ενιαίο image με όλα τα εργαλεία (Python ML βιβλιοθήκες, Go και Java compilers, DevOps εργαλεία) θα ήταν ενδεικτικά της τάξης των 5 έως 8 GB. Με ξεχωριστά images, το image του developer παραμένει ενδεικτικά γύρω στα 1 έως 1.5 GB, οπότε το Pod κατεβαίνει (pull) και ξεκινά πολύ πιο γρήγορα.
+
+Πώς τα χρησιμοποιεί ο Manager
+
+Όταν ο χρήστης επιλέγει στο UI ένα profile (π.χ. Data Analyst), ο Manager δεν κάνει build εκείνη τη στιγμή. Χρησιμοποιεί το έτοιμο image (workstation-profile:data-analyst), εκτελεί τη σάρωση, εφαρμόζει το auto-remediation στο Kubernetes manifest (π.χ. όριο 4 GB RAM, read-only root filesystem) και κάνει deploy στο k3s cluster.
+
+
+6. Διαχείριση Images και Registries
+
+Το OpenVSCode Server διατίθεται έτοιμο ως Docker image από την κοινότητα, οπότε δεν χρειάζεται χειροκίνητη λήψη. Αρκεί η γραμμή FROM στο Dockerfile.base.
+
+Για να σηκώσει τα Pods, το k3s cluster χρειάζεται πρόσβαση στα χτισμένα images των profiles. Υπάρχουν τρεις επιλογές.
+
+Η πρώτη είναι ένα τοπικό registry μέσα στο Proxmox VM. Μετά το docker build, τα images αποστέλλονται (push) στο localhost:5000 και το k3s τα τραβάει από εκεί, χωρίς εξάρτηση από εξωτερικούς λογαριασμούς. Είναι η πιο καθαρή τοπική λύση.
+
+Η δεύτερη είναι το απευθείας import στο containerd του k3s, χωρίς registry. Το image εξάγεται σε αρχείο και εισάγεται στο k3s:
+
+    docker save workstation-profile:developer -o workstation-developer.tar
+    sudo k3s ctr images import workstation-developer.tar
+
+Η τρίτη είναι ένα cloud registry, όπως το Docker Hub ή το GitHub Container Registry (ghcr.io), το οποίο συνδέεται με το GitHub repository της εργασίας.
+
+Δεν απαιτείται δημιουργία νέων λογαριασμών. Για το GitHub repository χρησιμοποιείται ο υπάρχων λογαριασμός, για τα images είτε τοπικό registry είτε υπάρχων λογαριασμός, και το Trivy εκτελείται τοπικά στο VM χωρίς API keys. Το Trivy χρειάζεται μόνο να κατεβάζει περιοδικά τη βάση ευπαθειών του, ή να του δοθεί προ-κατεβασμένη για λειτουργία χωρίς σύνδεση.
