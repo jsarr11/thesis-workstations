@@ -209,3 +209,112 @@ A.8.9 → 4.1, 4.2, 4.3, 4.7, 4.8 (όλα "Subset")
     A.8.28 → 16.1 (superset), 16.9, 16.12
     A.8.2  → 4.7, 5.4, 6.5, 6.8, 12.8
     A.8.24 και A.8.32 → δεν αντιστοιχίζονται σε κανένα safeguard
+
+
+
+
+2. A.8.28 Secure coding (15/10/2026 18:47, 08-workflow Step 40)
+
+Τι λέει το ISO
+
+"Secure coding principles shall be applied to software development." (ISO/IEC 27001:2022, Annex A.8.28)
+
+Δηλαδή: όποιο λογισμικό γράφεται ή τρέχει στην εταιρεία πρέπει να ακολουθεί αρχές ασφαλούς ανάπτυξης.
+Ο έλεγχος είναι ευρύς (όλος ο κύκλος ανάπτυξης). Στο project καλύπτουμε ΕΝΑ μετρήσιμο κομμάτι του:
+το λογισμικό των workstations τρέχει χωρίς δικαιώματα root (αρχή του ελάχιστου δικαιώματος, secure by default).
+
+Επίσημο mapping CIS Controls v8 → ISO (Step 39): A.8.28 → 16.1 (superset), 16.9, 16.12.
+    16.1  Establish and Maintain a Secure Application Development Process   (superset: το safeguard είναι ευρύτερο)
+    16.9  Train Developers in Application Security Concepts and Secure Coding (εκπαίδευση, εκτός εύρους του engine)
+    16.12 Implement Code-Level Security Checks                                (SAST/έλεγχος κώδικα, μελλοντικά)
+Το mapping δεν αναφέρει το CIS Kubernetes Benchmark 5.2.7. Η αντιστοίχιση 5.2.7 → A.8.28 είναι απόφαση του project
+(Tier 1, #2 της αρχικής ανάλυσης): το workstation είναι το περιβάλλον όπου γράφεται και τρέχει ο κώδικας.
+
+Εξήγηση
+
+CIS Kubernetes Benchmark v1.8, 5.2.7 "Minimize the admission of root containers".
+Στο Kubernetes ο χρήστης ενός container είναι αυτός του image (USER στο Dockerfile), εκτός αν το manifest ορίσει άλλον.
+Το manifest μπορεί:
+    - runAsNonRoot: true   → το kubelet ελέγχει, πριν ξεκινήσει το container, ότι ο χρήστης δεν είναι το UID 0.
+                              Αν θα ήταν root, ΔΕΝ το ξεκινά (CreateContainerConfigError).
+    - runAsUser: <UID>     → ορίζει ρητά τον χρήστη (το 0 = root).
+Αν λείπουν και τα δύο, το container τρέχει ως ο χρήστης του image, χωρίς κανέναν έλεγχο από το Kubernetes.
+
+Αλλαγή σε σχέση με την αρχική ανάλυση (γραμμή "A.8.28: 5.2.7 (root, runAsUser: 1000)" παραπάνω):
+ο κανόνας ΔΕΝ βάζει runAsUser: 1000. Το engine είναι ανεξάρτητο εργαλείο· άλλη πλατφόρμα έχει άλλα images και άλλα UID.
+Αν το engine έβαζε 1000, θα άλλαζε τον χρήστη άλλων images (π.χ. χωρίς δικαίωμα στα αρχεία τους).
+Ζητά μόνο runAsNonRoot: true: ισχύει για κάθε image, και ο έλεγχος γίνεται από το ίδιο το Kubernetes.
+
+Πώς το λύνω
+
+Δύο έλεγχοι στο engine (ίδια λογική με τον A.8.9: remediate όταν η διόρθωση δεν αλλάζει τι κάνει το Pod, αλλιώς block):
+    CIS 5.2.7a  runAsNonRoot στο Pod
+        λείπει                          → διόρθωση: spec.securityContext.runAsNonRoot: true (μία φορά, για όλα τα containers)
+        true (ή true σε ΚΑΘΕ container)  → PASS
+        ρητό false στο Pod               → BLOCK (ρητή επιλογή του συντάκτη, δεν την αλλάζουμε σιωπηλά)
+    CIS 5.2.7b  ρητό root
+        runAsUser: 0 στο Pod ή σε container (και init) → BLOCK
+        runAsNonRoot: false σε container               → BLOCK (θα ακύρωνε το true του Pod για αυτό το container)
+    Γιατί block και όχι διόρθωση στο 5.2.7b: για να διορθωθεί θα έπρεπε να μπει άλλο UID, και αυτό εξαρτάται από το image.
+
+Τι ΔΕΝ αλλάζει
+    - manager/: κανένας κώδικας. Ο κανόνας μπαίνει στο Policy Checklist με το migration 004 και ο Manager τον στέλνει
+      αυτόματα στο engine (διαβάζει όλους τους κανόνες του profile από τον πίνακα policy_rules).
+    - Dockerfiles: ήδη τελειώνουν σε USER 1000 (CIS Docker 4.1). Το 1000 είναι ΑΡΙΘΜΟΣ, οπότε το kubelet μπορεί
+      να επαληθεύσει ότι δεν είναι root. Με όνομα χρήστη (USER coder) το container δεν θα ξεκινούσε.
+    - Trivy baseline: δεν χρειάζεται ακόμα, αφού τα images δεν αλλάζουν.
+
+Υλοποίηση του A.8.28 (15/10/2026 18:47)
+
+Πού βρίσκεται
+    compliance-engine/src/rules/a-8-28-secure-coding.js   (ο κανόνας)
+    compliance-engine/src/rules/index.js                  (μία γραμμή· ruleset 0.2.0, engine 0.2.0)
+    compliance-engine/test/secure-coding.test.js          (10 tests)
+    database/migrations/004_a828_secure_coding.sql        (A.8.28 στα 3 profiles, ON)
+
+Στο σημερινό manifest των workstations ο κανόνας βρίσκει μία παράβαση: το 5.2.7a (λείπει το runAsNonRoot).
+Με τον κανόνα ON: Pod με spec.securityContext = { runAsNonRoot: true }, report REMEDIATED.
+Με τον κανόνα OFF: το manifest μένει ίδιο, report VIOLATION_NOT_ENFORCED με το ποιος τον έκλεισε.
+Με ON και τους δύο κανόνες: 8 έλεγχοι, 6 PASS, 2 REMEDIATED (5.2.6 και 5.2.7a), ALLOW.
+
+Σημαντικό (να μη μπερδευτεί με τον A.8.9):
+    Ο A.8.28 εξασφαλίζει ότι το container ΞΕΚΙΝΑ ως μη-root. ΔΕΝ εμποδίζει το sudo αργότερα.
+    Το sudo το σταματά ο A.8.9 (5.2.6, allowPrivilegeEscalation: false → no_new_privs).
+    Άρα: A.8.28 ON + A.8.9 OFF → id = uid=1000, αλλά sudo whoami → root. Χρειάζονται και οι δύο (άμυνα σε βάθος).
+
+Αποδεικτικά (για ISO)
+    Ίδια με τον A.8.9: report ανά workstation (workspace-logs), log αποφάσεων, εγγραφές COMPLIANCE / A.8.28 στο Audit Trail,
+    SHA-256 κάθε report. Δείγμα: compliance-engine/examples/sample-report.json (ξαναπαράχθηκε με τους δύο κανόνες).
+
+Δοκιμές
+    31 unit tests του engine (21 + 10 νέα), 61 integration tests (Manager + PostgreSQL + Compliance Engine), όλα PASS.
+    Νέα integration tests: migration 004 (3 profiles, ON, επανεκτελέσιμο), Pod με runAsNonRoot: true και χωρίς runAsUser,
+    report A.8.28 REMEDIATED, Audit COMPLIANCE / A.8.28, κανόνας OFF → Pod χωρίς runAsNonRoot και VIOLATION_NOT_ENFORCED.
+
+Δοκιμή στο VM (εκκρεμεί, την κάνει ο χρήστης μετά το merge)
+    1. Μετά το deploy: pm2 logs manager → εφαρμόστηκε το 004· Policy Checklist → A.8.28 σε κάθε profile (ON).
+    2. Νέο workstation (A.8.28 ON). Στο terminal:  id  → uid=1000 ... (όχι 0)
+       Στο VM:  kubectl get pod <pod> -n workstations -o jsonpath='{.spec.securityContext}'  → {"runAsNonRoot":true}
+       workspace-logs: A.8.28 → REMEDIATED, CIS-5.2.7a before: null, after: true.
+    3. A.8.28 OFF για το profile, νέο workstation: ίδιο id (uid=1000, το δίνει το image), αλλά
+       jsonpath κενό και report VIOLATION_NOT_ENFORCED με το email του admin.
+    4. Ότι το Kubernetes επιβάλλει τον έλεγχο (image που τρέχει ως root):
+       kubectl run root-test -n workstations --image=busybox --restart=Never \
+         --overrides='{"spec":{"securityContext":{"runAsNonRoot":true}}}' -- sleep 10
+       kubectl get pod root-test -n workstations  → CreateContainerConfigError
+       kubectl describe pod root-test -n workstations → "container has runAsNonRoot and image will run as root"
+       kubectl delete pod root-test -n workstations
+    5. (Προαιρετικά, για τη διπλωματική) A.8.28 ON + A.8.9 OFF: id → uid=1000, sudo whoami → root.
+
+Κάλυψη (τι καλύπτει και τι όχι)
+    καλύπτεται     → runtime: κανένα workstation δεν ξεκινά ως root (CIS K8s 5.2.7), με ON/OFF ανά profile και αποδεικτικά
+    μερικώς        → 16.1 (secure development process): μόνο το κομμάτι "ασφαλείς προεπιλογές" των containers
+    δεν καλύπτεται → 16.9 (εκπαίδευση), 16.12 (έλεγχος του κώδικα των developers, SAST) → μελλοντική εργασία
+Pod Security Admission: το enforce μένει baseline. Το restricted θέλει επιπλέον capabilities drop ALL και seccompProfile,
+που ανήκουν στον A.8.2. Με warn/audit: restricted το k3s θα δείχνει πλέον λιγότερες προειδοποιήσεις.
+
+Πηγές
+    - CIS Kubernetes Benchmark v1.8, 5.2.7 (μέσω K3s CIS 1.8 Self-Assessment Guide: https://docs.k3s.io/security/self-assessment-1.8)
+    - Kubernetes docs, Configure a Security Context for a Pod or Container:
+      https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+    - CIS Controls v8 mapping to ISO/IEC 27001:2022 (info/CIS-27001-Mapping)

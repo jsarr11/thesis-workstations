@@ -264,3 +264,21 @@ Admin dashboard
   (σημείωση: το mapping είναι για τα Controls v8, όχι v8.1 όπως έγραφαν οι παλιές εκκρεμότητες)
 ☑ ΚΑΝΟΝΑΣ A.8.9: μένουν ΜΟΝΟ τα screenshots
 ☐ Απόφαση: το xlsx του CIS (άδεια CC BY-NC-ND 4.0) να μπει στο git ή στο .gitignore όπως το University-Prototypes
+
+
+Ενημέρωση 15/10/2026 18:47: Κανόνας A.8.28 Secure coding (08-workflow, Step 40)
+☑ Ανάλυση στο 10-Rules-Application (ενότητα 2) και εξήγηση στο 11-needtoknow (ενότητα 2)
+☑ Κώδικας: compliance-engine/src/rules/a-8-28-secure-coding.js (CIS 5.2.7a remediate, 5.2.7b block), engine/ruleset 0.2.0
+☑ Tests: 31 unit, 61 integration, όλα PASS
+☑ Migration 004: A.8.28 στο Policy Checklist των 3 profiles (ON)
+☑ Ενσωμάτωση στο 001-Draft
+☐ Commit και merge στο main (αναμένει έγκριση), push από τον χρήστη
+☐ Δοκιμή στο VM (10-Rules-Application, A.8.28, "Δοκιμή στο VM", βήματα 1–5)
+☐ Screenshots A.8.28 (τα ονόματα των workstations να κρατηθούν από τη δοκιμή):
+    S20 Policy Checklist, υπο-tab Software Developer: A.8.9 και A.8.28 με τους διακόπτες
+    S21 terminal workstation (A.8.28 ON): id → uid=1000
+    S22 VM: kubectl get pod … -o jsonpath='{.spec.securityContext}' → {"runAsNonRoot":true}
+    S23 VM: root-test busybox → CreateContainerConfigError / "container has runAsNonRoot and image will run as root"
+    S24 Απόσπασμα workspace-logs: A.8.28, CIS-5.2.7a before: null, after: true, REMEDIATED
+☐ Μετά τον A.8.2: enforce: restricted στο namespace workstations
+☐ Επόμενος κανόνας: A.8.31 ή A.8.2 (απόφαση του χρήστη)

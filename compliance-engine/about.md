@@ -2,7 +2,7 @@
 
 > Αυτόνομο εργαλείο ελέγχου συμμόρφωσης (compliance) και αυτόματης αποκατάστασης (auto-remediation) για workloads σε Kubernetes, με βάση το ISO/IEC 27001:2022 Annex A.8 και τα CIS Benchmarks.
 
-**Κατάσταση (v0.1.0):** λειτουργεί το API (`/evaluate`) με τον πρώτο κανόνα, **A.8.9 Configuration management**, μαζί με την επανεξέταση του cluster (`/cluster/scan`: kube-bench + Pod Security Admission). Η πλατφόρμα της διπλωματικής το χρησιμοποιεί σε κάθε deploy.
+**Κατάσταση (v0.2.0):** λειτουργεί το API (`/evaluate`) με δύο κανόνες, **A.8.9 Configuration management** και **A.8.28 Secure coding**, μαζί με την επανεξέταση του cluster (`/cluster/scan`: kube-bench + Pod Security Admission). Η πλατφόρμα της διπλωματικής το χρησιμοποιεί σε κάθε deploy.
 
 ---
 
@@ -24,7 +24,7 @@
 
 ```
                       ┌──────────── Compliance Engine ─────────────────────────────────────┐
-Πλατφόρμα ───────────► POST /evaluate     έλεγχος + διόρθωση πριν από το deploy      ✅ v0.1
+Πλατφόρμα ───────────► POST /evaluate     έλεγχος + διόρθωση πριν από το deploy      ✅ v0.2
 Πλατφόρμα ───────────► POST /cluster/scan επανεξέταση cluster (kube-bench + PSA)    ✅ v0.1
 Οποιοσδήποτε (kubectl) ► Admission Webhook  έλεγχος ό,τι μπαίνει στο cluster          σχέδιο
 CI/CD ───────────────► CLI                έλεγχος αρχείων YAML πριν από το merge     σχέδιο
@@ -73,11 +73,20 @@ CI/CD ───────────────► CLI                έλε
 
 Κάθε scan αποθηκεύεται ως **cluster-logs** (με SHA-256), και το τελευταίο scan μπαίνει αυτούσιο στην ενότητα `cluster_review` κάθε report αξιολόγησης (workspace-logs). Το εργαλείο **δεν** αποφασίζει πότε τρέχει: η πλατφόρμα το καλεί (π.χ. καθημερινά, σε κάθε deploy, κατ' απαίτηση).
 
+**A.8.28 Secure coding**: CIS Kubernetes Benchmark v1.8, §5.2.7 (Minimize the admission of root containers)
+
+| CIS | Έλεγχος | Αν παραβιάζεται |
+|---|---|---|
+| 5.2.7a | `runAsNonRoot: true` στο Pod (ή σε όλα τα containers) | διόρθωση: `runAsNonRoot: true` στο Pod. Αν είναι ρητά `false` στο Pod: μπλοκάρισμα |
+| 5.2.7b | ρητό root: `runAsUser: 0` (Pod ή container) ή `runAsNonRoot: false` σε container | μπλοκάρισμα |
+
+Ο κανόνας **δεν** ορίζει UID (`runAsUser`): κάθε πλατφόρμα έχει τα δικά της images και UID. Με `runAsNonRoot: true` το kubelet αρνείται να ξεκινήσει container που θα έτρεχε ως root. Προϋπόθεση: το image να δηλώνει αριθμητικό χρήστη (π.χ. `USER 1000`), αλλιώς το kubelet δεν μπορεί να το επαληθεύσει και το container δεν ξεκινά.
+
 ### Σχεδιασμένοι (Tiers 1–3, 22 έλεγχοι του Annex A.8)
 
 | Τρόπος υλοποίησης | Έλεγχοι |
 |---|---|
-| Έλεγχος και διόρθωση manifest | A.8.28, A.8.31, A.8.12, A.8.6, A.8.2, A.8.16, A.8.29, A.8.24, A.8.21 |
+| Έλεγχος και διόρθωση manifest | A.8.31, A.8.12, A.8.6, A.8.2, A.8.16, A.8.29, A.8.24, A.8.21 |
 | Εξωτερικά εργαλεία (Trivy, ClamAV, Cosign, kube-bench) | A.8.7, A.8.8, A.8.12 (secrets στο image), A.8.4, A.8.27, A.8.20, A.8.22, A.8.15 |
 | Μέσω webhook (ποιος κάνει το αίτημα) | A.8.5, A.8.32, A.8.3 (μόνο report) |
 | Ιδιότητες του ίδιου του εργαλείου | A.8.25 (shift-left έλεγχος), A.8.26 (δυναμικοί κανόνες) |

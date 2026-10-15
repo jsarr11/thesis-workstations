@@ -2,7 +2,7 @@
 
 > Τι πρέπει να κάνει μια πλατφόρμα για να χρησιμοποιήσει το Compliance Engine.
 
-**Κατάσταση:** τα API των ενοτήτων 3.1 και 3.2 είναι υλοποιημένα (v0.1.0). Ό,τι σημειώνεται ως *(σχέδιο)* δεν υπάρχει ακόμα.
+**Κατάσταση:** τα API των ενοτήτων 3.1 και 3.2 είναι υλοποιημένα (v0.2.0). Ό,τι σημειώνεται ως *(σχέδιο)* δεν υπάρχει ακόμα.
 
 ---
 
@@ -46,7 +46,8 @@ curl http://127.0.0.1:5100/health
 {
   "manifest": { "apiVersion": "v1", "kind": "Pod", "metadata": { "name": "..." }, "spec": { "containers": [ ... ] } },
   "rules": [
-    { "id": "A.8.9", "enabled": true, "changed_by": "admin@example.com", "changed_at": "2026-10-15T09:10:00Z" }
+    { "id": "A.8.9", "enabled": true, "changed_by": "admin@example.com", "changed_at": "2026-10-15T09:10:00Z" },
+    { "id": "A.8.28", "enabled": true }
   ],
   "context": { "platform": "my-platform", "owner": "dev@example.com", "approved_by": "admin@example.com" }
 }
@@ -64,8 +65,8 @@ curl http://127.0.0.1:5100/health
   "report_sha256": "9f2c…",
   "decision": "ALLOW",
   "compliant": true,
-  "summary": { "rules_enabled": ["A.8.9"], "rules_disabled": [], "checks_total": 6, "passed": 5, "remediated": 1, "blocked": 0, "violations_not_enforced": 0 },
-  "rules": [ { "rule": "A.8.9", "enabled": true, "outcome": "REMEDIATED" } ],
+  "summary": { "rules_enabled": ["A.8.9", "A.8.28"], "rules_disabled": [], "checks_total": 8, "passed": 6, "remediated": 2, "blocked": 0, "violations_not_enforced": 0 },
+  "rules": [ { "rule": "A.8.9", "enabled": true, "outcome": "REMEDIATED" }, { "rule": "A.8.28", "enabled": true, "outcome": "REMEDIATED" } ],
   "unknown_rules": [],
   "manifest": { "...": "το διορθωμένο manifest, έτοιμο για deploy" }
 }
@@ -128,6 +129,7 @@ POST /cluster/scan
 | Τα workloads να μην τρέχουν στο `default` namespace | Το webhook μπορεί μόνο να απορρίψει, όχι να αλλάξει namespace | A.8.31 |
 | Ο ServiceAccount της πλατφόρμας να δηλωθεί στο εργαλείο ως εγκεκριμένος | Αλλιώς ο κανόνας GitOps θα μπλοκάρει την ίδια την πλατφόρμα | A.8.32 |
 | Hardening των images στο build (non-root, χωρίς sudo, pinned εκδόσεις) | Το εργαλείο ελέγχει τα images, δεν τα ξαναχτίζει | A.8.28, A.8.2 |
+| Τα images να δηλώνουν **αριθμητικό** χρήστη (`USER 1000`, όχι `USER coder`) | Ο A.8.28 βάζει `runAsNonRoot: true` και δεν ορίζει UID· με όνομα χρήστη το kubelet δεν ξεκινά το container | A.8.28 |
 | Υπογραφή των images (Cosign) | Ο κανόνας απορρίπτει ανυπόγραφα images | A.8.4 |
 | Ingress με TLS, αν εκτίθενται υπηρεσίες | Το εργαλείο ελέγχει τη ρύθμιση, δεν εγκαθιστά certificates | A.8.24, A.8.21 |
 | Backup του `compliance-engine/data/` (reports, cluster-logs, logs αποφάσεων) | Είναι τα αποδεικτικά· το εργαλείο τα γράφει, δεν κρατά αντίγραφα | A.8.13, A.8.15 |
@@ -139,12 +141,13 @@ POST /cluster/scan
 
 ## 6. Παράδειγμα: η πλατφόρμα της διπλωματικής (`manager/`)
 
-Υλοποιημένες αλλαγές (v0.1.0):
+Υλοποιημένες αλλαγές (v0.1.0, v0.2.0):
 
 - [x] `manager/.env`: `COMPLIANCE_ENGINE_URL` και `COMPLIANCE_ENGINE_API_KEY` (τα συμπληρώνει αυτόματα το `deploy.sh`, που δημιουργεί και το `compliance-engine/.env` με τυχαίο key την πρώτη φορά).
 - [x] `manager/compliance.js`: client του εργαλείου (timeout, fail-closed, έλεγχος SHA-256 στη λήψη report).
 - [x] Stage 2 του pipeline (`manager/workstations.js`): οι κανόνες του profile στέλνονται στο `/evaluate`, γίνεται deploy το διορθωμένο manifest, και σε `DENY` δεν δημιουργείται τίποτα στο k3s.
 - [x] Migration `database/migrations/002_compliance_engine.sql`: ο κανόνας A.8.9 στο Policy Checklist ανά profile (προεπιλογή ON), `policy_rules.updated_by`, πίνακας `compliance_reports` (μόνο ID, SHA-256, απόφαση).
+- [x] Migration `database/migrations/004_a828_secure_coding.sql` (v0.2.0): ο κανόνας A.8.28 στο Policy Checklist ανά profile (προεπιλογή ON). Καμία αλλαγή στον κώδικα του `manager/`· τα images ήδη τελειώνουν σε `USER 1000`.
 - [x] Audit της πλατφόρμας: μία εγγραφή `COMPLIANCE` ανά κανόνα, `COMPLIANCE-GATE` σε απόρριψη, `COMPLIANCE-ENGINE` όταν το εργαλείο δεν απαντά, `REPORT-DOWNLOAD` σε κάθε λήψη.
 - [x] UI: κουμπί «📄 workspace-logs» μόνο για τον admin, στην καρτέλα Workstations και στο Audit Trail (γραμμή `DEPLOY` ή `COMPLIANCE-GATE`), ώστε το report να κατεβαίνει και μετά τον τερματισμό → `GET /api/workstations/:id/compliance-report`. Ο developer δεν βλέπει το report.
 - [x] Policy Checklist με ένα υπο-tab ανά profile.

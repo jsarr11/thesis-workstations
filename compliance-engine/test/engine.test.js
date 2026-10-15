@@ -44,7 +44,7 @@ test('baseline Pod: A.8.9 OFF leaves manifest unchanged and records the violatio
   assert.equal(report.rules[0].setting_changed_by, 'admin@example.com');
   assert.equal(check(report, 'CIS-5.2.6')[0].status, 'VIOLATION_NOT_ENFORCED');
   assert.equal(report.manifest.sha256_before, report.manifest.sha256_after);
-  assert.deepEqual(report.summary.rules_disabled, ['A.8.9']);
+  assert.deepEqual(report.summary.rules_disabled, ['A.8.9', 'A.8.28'], 'A.8.28 is not in the request, so it is disabled too');
 });
 
 test('rule missing from the request is treated as disabled', () => {
