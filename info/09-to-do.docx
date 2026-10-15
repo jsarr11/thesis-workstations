@@ -282,3 +282,20 @@ Admin dashboard
     S24 Απόσπασμα workspace-logs: A.8.28, CIS-5.2.7a before: null, after: true, REMEDIATED
 ☐ Μετά τον A.8.2: enforce: restricted στο namespace workstations
 ☐ Επόμενος κανόνας: A.8.31 ή A.8.2 (απόφαση του χρήστη)
+
+
+Ενημέρωση 15/10/2026 19:15: A.8.28 στο VM (08-workflow, Step 41)
+☑ Push και deploy (engine 0.2.0, migration 004)
+☑ Δοκιμή στο VM: ON (5100), OFF (7840), busybox, A.8.28 ON + A.8.9 OFF (7076). Όλα όπως αναμενόταν.
+☑ Αποτελέσματα στο 10, 11 και 001-Draft (8.1, Table 8.8, 4.4, 5, 9.4, 10, περιλήψεις)
+☑ ΚΑΝΟΝΑΣ A.8.28: μένουν ΜΟΝΟ τα screenshots
+☐ Screenshots A.8.28 (οι θέσεις [SCREENSHOT] στο 8.1 του draft):
+    S20 Policy Checklist, Software Developer: A.8.9 και A.8.28 με τους διακόπτες
+    S21 terminal workstation-tester1-5100: id → uid=1000
+    S22 VM: kubectl get pod workstation-tester1-5100 ... jsonpath → {"runAsNonRoot":true}
+    S23 VM: busybox root-test → CreateContainerConfigError / "container has runAsNonRoot and image will run as root"
+    S24 Απόσπασμα workspace-logs του 5100: A.8.28, CIS-5.2.7a before: null, after: true, REMEDIATED
+    S25 terminal workstation-tester1-7076: id → uid=1000, sudo whoami → root
+    (τα workstations λήγουν σε 10 ώρες· αν χαθούν, ξανακάνε τη δοκιμή και κράτα τα νέα ονόματα)
+☐ Απόφαση: email και IP μέσα στο 001-Draft (δημόσιο repo) να αντικατασταθούν με ουδέτερα
+☐ Επόμενος κανόνας: A.8.2 ή A.8.31 (απόφαση του χρήστη)

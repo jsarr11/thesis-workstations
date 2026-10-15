@@ -318,3 +318,25 @@ Pod Security Admission: το enforce μένει baseline. Το restricted θέλ
     - Kubernetes docs, Configure a Security Context for a Pod or Container:
       https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
     - CIS Controls v8 mapping to ISO/IEC 27001:2022 (info/CIS-27001-Mapping)
+
+
+Δοκιμή του A.8.28 στο VM (15/10/2026 19:15, 08-workflow Step 41): ΕΠΙΤΥΧΗΣ
+    Deploy: engine/ruleset 0.2.0, migration 004 εφαρμόστηκε, A.8.28 στο Policy Checklist των 3 profiles.
+    1. Και οι δύο κανόνες ON, workstation-tester1-5100 (report 47f2dd86-9d98-4c76-8eda-bdfa54820cec):
+         id → uid=1000(openvscode-server)
+         kubectl ... jsonpath='{.spec.securityContext}' → {"runAsNonRoot":true}
+         report: 8 έλεγχοι, 6 PASS, 2 REMEDIATED (5.2.6, 5.2.7a)· A.8.28 REMEDIATED, 5.2.7a before null → after true, 5.2.7b PASS
+    2. Και οι δύο κανόνες OFF, workstation-tester1-7840 (report f66c7c13-f277-4821-9ab0-3d7e3732424b):
+         id → uid=1000 (το δίνει το image)
+         jsonpath → {}
+         report: A.8.9 και A.8.28 DISABLED_VIOLATIONS_FOUND, 5.2.6 και 5.2.7a VIOLATION_NOT_ENFORCED, manifest changed: false
+    3. busybox με runAsNonRoot: true στο namespace workstations:
+         STATUS CreateContainerConfigError
+         kubelet: "Error: container has runAsNonRoot and image will run as root"
+         Η προειδοποίηση restricted δεν αναφέρει πια το non-root (μόνο allowPrivilegeEscalation, capabilities, seccompProfile).
+    4. A.8.28 ON, A.8.9 OFF, workstation-tester1-7076:
+         id → uid=1000, sudo whoami → root
+         → ο A.8.28 εμποδίζει την εκκίνηση ως root, ο A.8.9 το "γίνομαι root" αργότερα. Χρειάζονται και οι δύο.
+    Σημείωση: στο report το setting_changed_by του A.8.28 είναι null μέχρι να αλλάξει ο κανόνας από admin
+    (τον έβαλε το migration)· μετά γράφει το email του admin.
+    Κάλυψη: ο A.8.28 ΟΛΟΚΛΗΡΩΘΗΚΕ (κώδικας, tests, VM). Μένουν μόνο τα screenshots (09-to-do, S20–S25).

@@ -368,3 +368,15 @@ Fail-closed (τι σημαίνει και πού είναι):
       → Το kubelet δεν το ξεκινά. Γι' αυτό η πλατφόρμα πρέπει να έχει αριθμητικό USER (γραμμένο στο integration-instructions).
     - "Πώς ξέρω ότι ο κανόνας ήταν ON όταν φτιάχτηκε το workstation;"
       → Το workspace-logs γράφει enabled, outcome, before/after και ruleset_version, με SHA-256 που ελέγχεται στη λήψη.
+
+
+2.11 Η δοκιμή στο VM (15/10/2026 19:15): ο A.8.28 ΟΛΟΚΛΗΡΩΘΗΚΕ
+    - ON  (workstation-tester1-5100): id = 1000, Pod με {"runAsNonRoot":true}, report REMEDIATED (47f2dd86…).
+    - OFF (workstation-tester1-7840, και οι δύο κανόνες κλειστοί): id = 1000, Pod με {}, report VIOLATION_NOT_ENFORCED (f66c7c13…).
+      → Ο χρήστης είναι ίδιος. Η διαφορά: με ON το Kubernetes ΕΛΕΓΧΕΙ. Αυτό το δείχνει η 3η δοκιμή.
+    - busybox (image που τρέχει ως root) με runAsNonRoot: true → CreateContainerConfigError,
+      "container has runAsNonRoot and image will run as root". Η απόδειξη ότι ο έλεγχος γίνεται από το kubelet.
+    - A.8.28 ON + A.8.9 OFF (workstation-tester1-7076): id = 1000, sudo whoami = root.
+      → Η απάντηση στην ερώτηση 2.7: ο A.8.28 μόνος του δεν φτάνει, χρειάζεται και ο A.8.9.
+    - Αν ρωτήσουν "πώς ξέρεις ότι δούλεψε;": τρία πράγματα, το jsonpath του Pod, το report με before/after
+      και το σφάλμα του kubelet στο busybox.
