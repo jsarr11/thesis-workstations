@@ -126,6 +126,7 @@ function createServer(config, { cluster } = {}) {
         compliant: report.compliant,
         summary: report.summary,
         rules: report.rules.map((r) => ({ rule: r.rule, enabled: r.enabled, outcome: r.outcome })),
+        unknown_rules: report.unknown_rules, // κανόνες που έστειλε ο καλών αλλά δεν υπάρχουν στο εργαλείο
         manifest,
       });
     }
