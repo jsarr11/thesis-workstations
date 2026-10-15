@@ -1,0 +1,242 @@
+Need to Know: τι παίζει σε κάθε κανόνα και πώς το υλοποιήσαμε
+
+Δημιουργήθηκε: 15/10/2026 17:37
+Σκοπός: να ξέρω για κάθε κανόνα τι κάνει, γιατί δουλεύει, πού είναι ο κώδικας και τι μπορεί να με ρωτήσουν.
+Το 10-Rules-Application λέει ΤΙ έγινε. Αυτό εδώ εξηγεί ΓΙΑΤΙ δουλεύει.
+Γράφονται μόνο πράγματα που υπάρχουν και έχουν δοκιμαστεί.
+
+
+====================================================================
+Η εικόνα συνολικά (ισχύει για όλους τους κανόνες)
+====================================================================
+
+Τι γίνεται όταν ζητάω workstation:
+    1. Ο developer κάνει αίτηση από το portal, ο admin την εγκρίνει.
+    2. Ο Manager φτιάχνει το "γυμνό" (baseline) manifest του Pod. Γυμνό = χωρίς καμία ρύθμιση ασφαλείας,
+       όπως θα το έγραφε κάποιος από ένα παράδειγμα. Αρχείο: manager/workstations.js, buildManifests().
+    3. Ο Manager διαβάζει από τη βάση (πίνακας policy_rules) ποιοι κανόνες είναι ON/OFF για το profile
+       (αυτό που αλλάζει ο admin στο Policy Checklist), μαζί με το ποιος τους άλλαξε και πότε.
+    4. Στέλνει manifest + κανόνες στο Compliance Engine (POST /evaluate, με API key).
+       Αρχείο: manager/workstations.js, evaluateCompliance() και manager/compliance.js.
+    5. Το engine ελέγχει, διορθώνει ό,τι διορθώνεται, και απαντά ALLOW (με διορθωμένο manifest) ή DENY.
+       Αποθηκεύει το report (workspace-logs) και επιστρέφει report_id + SHA-256.
+    6. ALLOW → ο Manager κάνει deploy ΤΟ ΔΙΟΡΘΩΜΕΝΟ manifest στο k3s.
+       DENY ή σφάλμα → το αίτημα γίνεται FAILED, δεν δημιουργείται τίποτα στο cluster.
+    7. Το k3s, πριν δεχτεί το Pod, το ελέγχει και αυτό (Pod Security Admission στο namespace workstations).
+
+Τα 3 κομμάτια, με μια φράση το καθένα:
+    - Manager (manager/): η πλατφόρμα. Χρήστες, αιτήσεις, εγκρίσεις, deploy. ΔΕΝ ξέρει τίποτα από ασφάλεια.
+    - Compliance Engine (compliance-engine/): ξεχωριστή υπηρεσία (pm2 "compliance-engine", 127.0.0.1:5100).
+      Ξέρει τους κανόνες. Δεν ξέρει τίποτα για την πλατφόρμα. Θα μπορούσε να το καλεί οποιαδήποτε άλλη πλατφόρμα.
+    - k3s: το Kubernetes. Τρέχει τα Pods και έχει τον δικό του έλεγχο (Pod Security Admission).
+
+Γιατί ξεχωριστό engine και όχι κώδικας μέσα στον Manager:
+    - Μπορεί να το χρησιμοποιήσει και άλλη πλατφόρμα (έχει δικό του API και integration-instructions.md).
+    - Ο κώδικας ασφαλείας είναι σε ένα σημείο, ελέγχεται και τεστάρεται μόνος του (20 tests).
+    - Τα αποδεικτικά τα κρατά το engine, όχι η πλατφόρμα, άρα η πλατφόρμα δεν μπορεί να τα "φτιάξει" όπως θέλει.
+
+Οι 4 καταστάσεις ενός ελέγχου (compliance-engine/src/engine.js, CHECK):
+    PASS                     → ήταν ήδη σωστό, δεν άλλαξε τίποτα
+    REMEDIATED               → ήταν λάθος, ο κανόνας είναι ON, διορθώθηκε αυτόματα
+    BLOCKED                  → ήταν λάθος, ο κανόνας είναι ON, ΔΕΝ διορθώνεται με ασφάλεια → DENY
+    VIOLATION_NOT_ENFORCED   → ήταν λάθος, αλλά ο κανόνας είναι OFF → περνάει, αλλά γράφεται ως παράβαση
+
+Η απόφαση: αν υπάρχει έστω ένα BLOCKED → DENY. Αλλιώς ALLOW.
+
+Remediate ή block; Πώς αποφασίζεται:
+    - Remediate όταν η διόρθωση ΔΕΝ αλλάζει τι κάνει το workstation. Π.χ. "allowPrivilegeEscalation: false":
+      το editor δουλεύει ακριβώς το ίδιο, απλώς δεν μπορείς να γίνεις root.
+    - Block όταν η διόρθωση θα χάλαγε το Pod ή θα άλλαζε τη σημασία του. Π.χ. ένα hostPath volume:
+      αν το engine το έσβηνε, το Pod θα ξεκινούσε χωρίς δεδομένα που κάποιος ζήτησε σκόπιμα, ή δεν θα ξεκινούσε.
+      Δεν μαντεύουμε τι ήθελε ο συντάκτης· σταματάμε και το λέμε.
+
+Fail-closed (τι σημαίνει και πού είναι):
+    - "Αν κάτι πάει στραβά, ΚΛΕΙΝΩ την πόρτα, δεν την αφήνω ανοιχτή."
+    - Αν το engine είναι κάτω, δεν απαντά, δεν έχει ρυθμιστεί, ή το API key είναι λάθος → το workstation
+      ΔΕΝ γίνεται deploy. Το αίτημα γίνεται FAILED και στο Audit Trail γράφεται COMPLIANCE-ENGINE / FAILED με τον λόγο.
+    - Το αντίθετο (fail-open) θα ήταν: "το engine δεν απαντά, ας το κάνω deploy χωρίς έλεγχο". Αυτό θα σήμαινε
+      ότι αρκεί να ρίξει κάποιος το engine για να περάσουν μη ελεγμένα workstations.
+    - Κώδικας: manager/compliance.js (ComplianceEngineError σε κάθε πρόβλημα) και manager/workstations.js
+      (catch → setStatus FAILED, cleanup των resources).
+    - Έγινε και στην πράξη κατά λάθος (Step 22): το engine δεν είχε ξεκινήσει μετά το πρώτο deploy και κανένα
+      workstation δεν παραδόθηκε. Μήνυμα: "Compliance Engine is not configured". Αυτή είναι ζωντανή απόδειξη.
+
+Αποδεικτικά (workspace-logs) και SHA-256:
+    - Για κάθε workstation το engine γράφει ένα JSON report (compliance-engine/data/reports/<report_id>.json):
+      ποιοι κανόνες ήταν ON/OFF, ποιος τους άλλαξε και πότε, κάθε έλεγχος με τιμή πριν/μετά, η απόφαση,
+      SHA-256 του manifest πριν και μετά, και το τελευταίο review του cluster (kube-bench).
+    - Επιπλέον γράφει μία γραμμή σε ημερήσιο log (data/logs/decisions-ΗΜΕΡΟΜΗΝΙΑ.jsonl), μόνο προσθήκες.
+    - Το SHA-256 είναι ένα "αποτύπωμα" του αρχείου: αν αλλάξει έστω ένας χαρακτήρας, αλλάζει όλο το hash.
+    - Η πλατφόρμα κρατά στη βάση της (πίνακας compliance_reports) το report_id και το SHA-256.
+      Όταν ο admin κατεβάζει το report, ο Manager ξαναϋπολογίζει το SHA-256 και, αν δεν ταιριάζει,
+      ΑΡΝΕΙΤΑΙ τη λήψη ("Report integrity check failed") και το γράφει στο Audit Trail.
+    - Άρα: αν κάποιος αλλάξει το report στον δίσκο του engine, φαίνεται. Αν αλλάξει ΚΑΙ τη βάση ΚΑΙ το engine,
+      δεν φαίνεται (γνωστός περιορισμός· λύση: υπογραφή των reports ή εξωτερικό append-only log).
+    - Μόνο ο admin βλέπει τα workspace-logs (Workstations tab και Audit Trail).
+
+
+====================================================================
+1. A.8.9 Configuration management  (ΟΛΟΚΛΗΡΩΘΗΚΕ, είναι το Proof of Concept)
+====================================================================
+
+1.1 Τι ζητάει το ISO, με απλά λόγια
+    "Οι ρυθμίσεις, και ειδικά οι ρυθμίσεις ασφαλείας, πρέπει να ορίζονται, να τεκμηριώνονται, να εφαρμόζονται,
+    να παρακολουθούνται και να επανεξετάζονται."
+    Πέντε ρήματα = πέντε απαιτήσεις. Το ISO δεν λέει ΠΩΣ. Το "πώς" το παίρνουμε από το CIS.
+
+1.2 Από το ISO στο CIS (γιατί αυτοί οι 6 έλεγχοι)
+    - Για Kubernetes, το "ασφαλές πρότυπο ρυθμίσεων" ενός Pod είναι η ενότητα 5.2 του CIS Kubernetes Benchmark
+      (Pod Security Standards), 13 συστάσεις.
+    - Κρατήσαμε όσες αφορούν την απομόνωση του Pod από τον host (τον server):
+        CIS 5.2.3  hostPID          να μη βλέπει τις διεργασίες του host            → διόρθωση (false)
+        CIS 5.2.4  hostIPC          να μη μοιράζεται IPC/κοινή μνήμη με τον host    → διόρθωση (false)
+        CIS 5.2.5  hostNetwork      να μη χρησιμοποιεί το δίκτυο του host            → διόρθωση (false)
+        CIS 5.2.6  allowPrivilegeEscalation   να μη μπορεί να πάρει περισσότερα δικαιώματα → διόρθωση (false)
+        CIS 5.2.12 hostPath volumes να μη "βλέπει" φακέλους του δίσκου του host     → BLOCK
+        CIS 5.2.13 hostPort         να μη δεσμεύει port απευθείας στον host          → BLOCK
+    - Οι υπόλοιπες της 5.2 πάνε σε άλλους κανόνες, για να μη μπλέκονται:
+        5.2.2 privileged, 5.2.8–5.2.10 capabilities → A.8.2 (privileged access)
+        5.2.7 root (runAsNonRoot)                    → A.8.28 (secure coding / ασφαλή images)
+    - Γιατί hostPID/IPC/Network διορθώνονται: αν λείπουν από το manifest, το Kubernetes τα θεωρεί false.
+      Το engine τα γράφει ρητά false. Το workstation δεν τα χρειάζεται, άρα η διόρθωση δεν χαλάει τίποτα.
+
+1.3 Το κεντρικό εύρημα: γιατί "sudo whoami" δίνει root (κανόνας OFF) και όχι (κανόνας ON)
+    Το πρόβλημα:
+    - Το upstream image του OpenVSCode Server δίνει στον χρήστη sudo χωρίς κωδικό (NOPASSWD).
+    - Το Kubernetes, αν δεν γράψεις τίποτα, ΕΠΙΤΡΕΠΕΙ privilege escalation.
+    - Άρα οποιοσδήποτε developer ανοίγει terminal, γράφει "sudo whoami" και είναι root μέσα στο container.
+    Ο μηχανισμός (αυτό να το ξέρω καλά):
+    - Το sudo είναι πρόγραμμα "setuid root": όταν το τρέχει απλός χρήστης, το Linux το εκτελεί με δικαιώματα root.
+      Έτσι "ανεβαίνεις" από απλό χρήστη σε root.
+    - Το Linux έχει μια σημαία στον πυρήνα, το no_new_privs. Αν είναι ενεργή σε μια διεργασία, ο πυρήνας
+      ΑΓΝΟΕΙ το setuid. Το sudo ξεκινά, αλλά χωρίς δικαιώματα root, και σταματά.
+    - Το "allowPrivilegeEscalation: false" στο manifest λέει στο Kubernetes να ενεργοποιήσει το no_new_privs
+      σε όλες τις διεργασίες του container. Δεν μπορεί να το απενεργοποιήσει κανείς από μέσα.
+    - Γι' αυτό το μήνυμα με τον κανόνα ON είναι:
+      sudo: The "no new privileges" flag is set, which prevents sudo from running as root.
+    Η δοκιμή στο VM (15/10/2026):
+    - Κανόνας OFF: workstation-tester1-6859 → sudo whoami → root. Report 9121f52c…, CIS-5.2.6 = VIOLATION_NOT_ENFORCED.
+    - Κανόνας ON:  workstation-tester1-9449 → sudo whoami → άρνηση. Report 15a03449…, CIS-5.2.6 = REMEDIATED.
+    - Ίδιο image, ίδιος χρήστης. Η μόνη διαφορά είναι ο κανόνας. Αυτή είναι η απόδειξη του PoC.
+    Προσοχή: ο κανόνας ΕΞΟΥΔΕΤΕΡΩΝΕΙ το sudo, δεν το ΑΦΑΙΡΕΙ από το image. Η αφαίρεση του NOPASSWD είναι
+    δουλειά του hardening των images (επόμενοι κανόνες). Μέχρι τότε, αν κλείσει ο κανόνας, το root επιστρέφει.
+
+1.4 Ειδική περίπτωση στον κώδικα: privileged container
+    - Αν ένα container είναι privileged: true, το Kubernetes ΔΕΝ δέχεται μαζί allowPrivilegeEscalation: false
+      (απορρίπτει το Pod). Άρα το engine δεν το "διορθώνει" (θα έφτιαχνε άκυρο manifest): το αφήνει ως
+      παράβαση με αιτιολογία "privileged containers are handled by rule A.8.2". Με τον κανόνα ON αυτό γίνεται BLOCKED.
+
+1.5 Γιατί hostPath και hostPort μπλοκάρονται (και δεν διορθώνονται)
+    - hostPath: δίνει στο container πρόσβαση σε φάκελο του δίσκου του server. Π.χ. hostPath "/" = όλος ο δίσκος
+      του server. Αν το engine το έσβηνε, το Pod θα έχανε ένα volume που περιμένει → μπορεί να μην ξεκινήσει ή
+      να δουλεύει λάθος. Γι' αυτό: DENY με μήνυμα "remove the volume or use a non-host volume type".
+    - hostPort: το container ανοίγει port απευθείας στη διεπαφή του server, παρακάμπτοντας το Service.
+      Αν το έσβηνε, η εφαρμογή δεν θα ήταν προσβάσιμη όπως περίμενε ο συντάκτης. DENY με μήνυμα "use a Service".
+    - Το δικό μας workstation δεν έχει κανένα από τα δύο, οπότε στην πράξη βγαίνουν PASS.
+      Το BLOCK δοκιμάζεται στα tests του engine (compliance-engine/test/engine.test.js:
+      "hostPath volume and hostPort block the deployment", και με κανόνα OFF: αναφέρεται αλλά δεν μπλοκάρει).
+
+1.6 Κανόνας OFF: γιατί αξιολογείται ακόμα
+    - Όταν ο admin κλείνει τον A.8.9 για ένα profile, το engine ΕΞΑΚΟΛΟΥΘΕΙ να ελέγχει, απλώς δεν διορθώνει.
+    - Κάθε παράβαση γράφεται VIOLATION_NOT_ENFORCED και ο κανόνας DISABLED_VIOLATIONS_FOUND, μαζί με το
+      ποιος τον έκλεισε και πότε (setting_changed_by / setting_changed_at, από τον πίνακα policy_rules).
+    - Γιατί: για το ISO, το κλείσιμο ενός κανόνα είναι "εξαίρεση" και πρέπει να φαίνεται. Ένας auditor μπορεί να
+      δει ότι τη συγκεκριμένη μέρα, για το συγκεκριμένο workstation, υπήρχε root πρόσβαση και ποιος το επέτρεψε.
+      Χωρίς αυτό, η περίοδος που ο κανόνας ήταν κλειστός θα ήταν αόρατη.
+
+1.7 Δεύτερη γραμμή άμυνας: Pod Security Admission (PSA)
+    - Τι είναι: έλεγχος ενσωματωμένος στο Kubernetes. Βάζεις labels σε ένα namespace και ο API server απορρίπτει
+      κάθε Pod που δεν τηρεί το επίπεδο που όρισες, ΟΠΟΙΟΣ κι αν το στείλει.
+    - Τι κάναμε: τα workstations τρέχουν στο namespace "workstations" (όχι στο default) με
+      enforce: baseline, warn: restricted, audit: restricted. Αρχείο: deploy/k8s/workstations-namespace.yaml,
+      το εφαρμόζει το deploy.sh.
+    - Γιατί χρειάζεται, αφού έχουμε engine: το engine ελέγχει μόνο ό,τι περνάει από την πλατφόρμα. Αν κάποιος
+      κάνει "kubectl apply" απευθείας, παρακάμπτει το engine. Το PSA τον σταματά.
+    - Δοκιμή στο VM: kubectl run psa-test με hostPID → Forbidden: violates PodSecurity "baseline:latest".
+    - Τι ΔΕΝ καλύπτει: το baseline περιέχει hostPID/IPC/Network, privileged, hostPath, hostPort, αλλά ΟΧΙ το
+      allowPrivilegeEscalation (αυτό είναι στο restricted). Άρα για το sudo/root το engine είναι η μόνη γραμμή που
+      επιβάλλει. Το restricted μένει σε warn/audit, γιατί θα απέρριπτε σήμερα τα workstations (τρέχουν ακόμα με
+      χρήστη που δεν δηλώνεται non-root, capabilities κ.λπ.). Ανεβαίνει σε enforce restricted όταν γίνουν A.8.28 και A.8.2.
+    - Τι ΔΕΝ κάνει το PSA σε σχέση με το engine: δεν διορθώνει (μόνο απορρίπτει), δεν έχει κανόνες ανά profile,
+      δεν βγάζει report ανά workstation, δεν ξέρει τι είναι το ISO.
+
+1.8 Επανεξέταση (το "reviewed" του ISO): kube-bench
+    - Τι είναι: εργαλείο της Aqua Security που ελέγχει ένα cluster απέναντι στο CIS Kubernetes Benchmark
+      (ρυθμίσεις API server, kubelet, αρχεία, RBAC κ.λπ.). Το τρέχουμε ως Kubernetes Job (aquasec/kube-bench v0.15.6).
+    - Πότε τρέχει: στην εκκίνηση (30 δευτ. μετά), κάθε 24 ώρες, και με το κουμπί του admin.
+      Κώδικας: manager/cluster-scans.js (χρονοπρογραμματισμός), compliance-engine/src/cluster.js (Job + ανάλυση),
+      endpoint POST /cluster/scan.
+    - Τι βγάζει: cluster-logs (JSON με SHA-256), μία γραμμή CLUSTER / CIS-SCAN στο Audit Trail, και ελέγχει
+      επίσης ότι το namespace έχει τα labels του PSA.
+    - Το τελευταίο review μπαίνει αυτούσιο μέσα σε κάθε workspace-logs (ενότητα cluster_review), άρα κάθε
+      workstation έχει και την κατάσταση του cluster τη στιγμή που δημιουργήθηκε.
+    - Πρώτο αποτέλεσμα (k3s-cis-1.9): 31 PASS / 28 FAIL / 57 WARN / 14 INFO.
+    Γιατί τα 28 FAIL δεν είναι 28 πραγματικά προβλήματα:
+    - Στο k3s ο API server, ο scheduler κ.λπ. τρέχουν ΜΕΣΑ στη μία διεργασία k3s. Οι ρυθμίσεις τους δεν φαίνονται
+      ως παράμετροι ξεχωριστών διεργασιών ή σε αρχεία, όπως περιμένει το kube-bench.
+    - Το kube-bench για k3s τις διαβάζει από το journal του k3s (journalctl), που ΔΕΝ ήταν διαθέσιμο μέσα στο Job.
+      Άρα "δεν βρήκα τη ρύθμιση" → FAIL.
+    - Επιβεβαίωση: το 1.2.1 (anonymous-auth) βγήκε FAIL, αλλά στο VM:
+      sudo journalctl -u k3s | grep -m1 -o "anonymous-auth=[a-z]*"  → anonymous-auth=false. Ψευδώς θετικό.
+    - Τα FAIL της 5.1 (RBAC, service accounts) είναι πιθανώς ΑΛΗΘΙΝΑ: π.χ. το token του default service account
+      μπαίνει σε κάθε workstation, και η πλατφόρμα χρησιμοποιεί το admin kubeconfig. Αυτά ανήκουν στους A.8.2/A.8.3.
+    - Για τον A.8.9 αρκεί ότι η επανεξέταση γίνεται και τεκμηριώνεται. Η ανάλυση και διόρθωση των FAIL
+      (και το mount του journal στο Job) είναι δουλειά του A.8.27.
+    - Τα 57 WARN είναι κυρίως "Manual" συστάσεις που το kube-bench δεν μπορεί να κρίνει μόνο του (μέσα σε αυτές
+      όλη η 5.2, που την καλύπτουν το engine και το PSA).
+
+1.9 Πώς καλύπτονται οι 5 απαιτήσεις του ISO
+    ορίζονται           → ο κανόνας στο engine (compliance-engine/src/rules/a-8-9-configuration-management.js)
+                          και το namespace με PSA (deploy/k8s/workstations-namespace.yaml)
+    τεκμηριώνονται      → το ίδιο το report περιέχει το ruleset (περιγραφή κάθε κανόνα και ελέγχου), το
+                          10-Rules-Application και η διπλωματική (Statement of Applicability)
+    εφαρμόζονται        → αυτόματη διόρθωση πριν από κάθε deploy (fail-closed) + PSA enforce baseline
+    παρακολουθούνται    → workspace-logs ανά workstation, Audit Trail, ημερήσιο decisions log
+    επανεξετάζονται     → kube-bench κάθε 24 ώρες / στην εκκίνηση / με κουμπί, cluster-logs
+
+1.10 Πού είναι τι (γρήγορη αναφορά)
+    compliance-engine/src/rules/a-8-9-configuration-management.js   ο κανόνας (6 έλεγχοι)
+    compliance-engine/src/engine.js                                   PASS/REMEDIATED/BLOCKED/VIOLATION_NOT_ENFORCED, ALLOW/DENY
+    compliance-engine/src/store.js                                    αποθήκευση reports + SHA-256 + decisions log
+    compliance-engine/src/cluster.js                                  kube-bench Job, έλεγχος labels PSA
+    compliance-engine/src/server.js                                   HTTP API (/evaluate, /reports, /cluster/scan), API key
+    compliance-engine/test/                                           20 tests
+    manager/workstations.js                                           baseline manifest, evaluateCompliance(), deploy, FAILED
+    manager/compliance.js                                             client του engine, fail-closed, έλεγχος SHA-256 στη λήψη
+    manager/cluster-scans.js                                          πότε τρέχει το kube-bench, πίνακας cluster_scans
+    deploy/k8s/workstations-namespace.yaml                            namespace με Pod Security Admission
+    Βάση: policy_rules (ON/OFF ανά profile), compliance_reports (report_id + SHA-256), cluster_scans
+
+1.11 Πιθανές ερωτήσεις της επιτροπής (με σύντομη απάντηση)
+    Ε: Γιατί δεν χρησιμοποιήσατε απλώς Kyverno ή OPA Gatekeeper;
+    Α: Για την επιβολή μόνο, θα μπορούσαν. Αυτό που δεν δίνουν μόνα τους: κανόνες οργανωμένους ανά control του ISO,
+       επιλογή ανά profile από τον admin, καταγραφή των κλειστών κανόνων ως εξαιρέσεων με ποιος/πότε, και ένα report
+       ανά workstation με SHA-256 που περιέχει και την κατάσταση του cluster. Επίσης χρησιμοποιούμε ήδη τον ενσωματωμένο
+       μηχανισμό (PSA) ως δεύτερη γραμμή. Μελλοντικά το engine θα μπορούσε να παράγει πολιτικές Kyverno.
+    Ε: Αν κάποιος παρακάμψει την πλατφόρμα;
+    Α: Το PSA απορρίπτει hostPID/IPC/Network, privileged, hostPath, hostPort (δοκιμή psa-test). Το allowPrivilegeEscalation
+       δεν το επιβάλλει ακόμα το PSA (είναι στο restricted)· αυτό είναι γνωστός περιορισμός, λύνεται με restricted
+       ή με admission webhook του engine.
+    Ε: Αν πέσει το engine;
+    Α: Fail-closed: κανένα workstation δεν γίνεται deploy. Συνέβη και στην πράξη (Step 22).
+    Ε: Πώς ξέρω ότι το report δεν έχει πειραχτεί;
+    Α: Η πλατφόρμα κρατά το SHA-256 και το ελέγχει σε κάθε λήψη· αλλαγή = άρνηση (δοκιμάστηκε στα integration tests).
+    Ε: Γιατί ο admin μπορεί να κλείσει έναν κανόνα ασφαλείας;
+    Α: Γιατί στην πράξη υπάρχουν εξαιρέσεις (π.χ. προσωρινή ανάγκη). Το ISO δεν απαγορεύει εξαιρέσεις, ζητά να
+       τεκμηριώνονται. Το engine συνεχίζει να ελέγχει και γράφει ποιος, πότε και τι παραβιάστηκε.
+    Ε: Πόσο καθυστερεί το engine τη δημιουργία;
+    Α: Περίπου 6 ms ανά αξιολόγηση με την αποθήκευση (μέτρηση στο PC ανάπτυξης)· η ίδια η αξιολόγηση 0,05 ms.
+       Το workstation θέλει δευτερόλεπτα για να ξεκινήσει, άρα αμελητέο. (Ο συνολικός χρόνος στο VM δεν έχει μετρηθεί ακόμα.)
+    Ε: Τα 28 FAIL του kube-bench δεν δείχνουν ανασφαλές cluster;
+    Α: Πολλά είναι ψευδώς θετικά λόγω του τρόπου που το k3s κρατά τις ρυθμίσεις (επιβεβαιώθηκε με anonymous-auth).
+       Η ανάλυσή τους ανήκει στον A.8.27. Για τον A.8.9 ζητείται να γίνεται επανεξέταση και να τεκμηριώνεται.
+    Ε: Λύσατε το sudo;
+    Α: Το εξουδετερώσαμε κατά την εκτέλεση (no_new_privs). Το NOPASSWD είναι ακόμα στο image· η αφαίρεσή του είναι
+       στο hardening των images.
+
+1.12 Γνωστοί περιορισμοί του A.8.9 σήμερα
+    - Το PSA είναι baseline: το allowPrivilegeEscalation το επιβάλλει μόνο το engine.
+    - Δεν υπάρχει admission webhook: ό,τι δεν περνάει από την πλατφόρμα δεν διορθώνεται και δεν παράγει report.
+    - Το kube-bench δεν βλέπει το journal του k3s → ψευδώς θετικά (διόρθωση στον A.8.27).
+    - Το sudo NOPASSWD υπάρχει ακόμα στο image.
+    - Δεν έχει γίνει ακόμα στο VM: cluster review με το κουμπί και μετά νέο workstation (to-do).
