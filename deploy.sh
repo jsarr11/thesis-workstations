@@ -26,6 +26,51 @@ fi
 # 3. Εγκατάσταση εξαρτήσεων ακριβώς όπως ορίζει το package-lock.json
 npm ci --omit=dev
 
+# 3b. Compliance Engine (ξεχωριστή υπηρεσία, χωρίς npm εξαρτήσεις): ρυθμίσεις, εκκίνηση και health check.
+#     Πρέπει να τρέχει πριν από τον Manager: χωρίς αυτό κανένα workstation δεν γίνεται deploy (fail-closed).
+ENGINE_DIR="$REPO_DIR/compliance-engine"
+env_value() { { grep -E "^$1=" "$2" || true; } | tail -1 | cut -d= -f2- | tr -d '[:space:]'; }
+
+if [ ! -f "$ENGINE_DIR/.env" ]; then
+  ENGINE_KEY_NEW="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
+  ( umask 077; printf 'HOST=127.0.0.1\nPORT=5100\nAPI_KEY=%s\n' "$ENGINE_KEY_NEW" > "$ENGINE_DIR/.env" )
+  echo "[+] Δημιουργήθηκε το $ENGINE_DIR/.env με νέο τυχαίο API key"
+fi
+ENGINE_PORT="$(env_value PORT "$ENGINE_DIR/.env")"; ENGINE_PORT="${ENGINE_PORT:-5100}"
+ENGINE_KEY="$(env_value API_KEY "$ENGINE_DIR/.env")"
+
+# Ο Manager χρειάζεται τη διεύθυνση και το ίδιο API key (προστίθενται μόνο αν λείπουν)
+[ -n "$(tail -c1 .env)" ] && echo >> .env
+if ! grep -q '^COMPLIANCE_ENGINE_URL=' .env; then
+  echo "COMPLIANCE_ENGINE_URL=http://127.0.0.1:$ENGINE_PORT" >> .env
+  echo "[+] Προστέθηκε το COMPLIANCE_ENGINE_URL στο manager/.env"
+fi
+if ! grep -q '^COMPLIANCE_ENGINE_API_KEY=' .env; then
+  echo "COMPLIANCE_ENGINE_API_KEY=$ENGINE_KEY" >> .env
+  echo "[+] Προστέθηκε το COMPLIANCE_ENGINE_API_KEY στο manager/.env"
+fi
+if [ "$(env_value COMPLIANCE_ENGINE_API_KEY .env)" != "$ENGINE_KEY" ]; then
+  echo "[ERROR] Το COMPLIANCE_ENGINE_API_KEY του manager/.env διαφέρει από το API_KEY του compliance-engine/.env"
+  exit 1
+fi
+
+if pm2 describe compliance-engine >/dev/null 2>&1; then
+  pm2 restart compliance-engine --update-env
+else
+  pm2 start "$ENGINE_DIR/src/server.js" --name compliance-engine --cwd "$ENGINE_DIR"
+fi
+for i in $(seq 1 15); do
+  if curl -fsS "http://127.0.0.1:$ENGINE_PORT/health" >/dev/null 2>&1; then
+    echo "[+] Compliance Engine health check OK (port $ENGINE_PORT)"
+    break
+  fi
+  if [ "$i" -eq 15 ]; then
+    echo "[ERROR] Το Compliance Engine δεν απαντά στο /health — δες: pm2 logs compliance-engine"
+    exit 1
+  fi
+  sleep 1
+done
+
 # 4. Επανεκκίνηση του Manager μέσω PM2 (ή πρώτη εκκίνηση αν δεν υπάρχει)
 if pm2 describe manager >/dev/null 2>&1; then
   pm2 restart manager --update-env

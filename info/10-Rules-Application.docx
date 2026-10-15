@@ -95,3 +95,50 @@ Tier 1
 Σημείωση (15/10/2026 11:51)
 
 Με την απόφαση του Step 17 (08-workflow), όλα τα παραπάνω υλοποιούνται μέσα στο Compliance Engine: ο έλεγχος και η διόρθωση του manifest (αντί για τον Manager), η τοποθέτηση του label του Pod Security Admission στα namespaces και η περιοδική εκτέλεση του kube-bench (ως cluster checks του εργαλείου). Η καταγραφή γίνεται στο audit του εργαλείου, και οι διακόπτες ON/OFF βρίσκονται στο δικό του UI. Η πλατφόρμα απλώς καλεί το εργαλείο πριν από το deploy.
+
+
+
+
+Υλοποίηση του A.8.9 (15/10/2026 12:25)
+
+Πού βρίσκεται
+    compliance-engine/src/rules/a-8-9-configuration-management.js   (ο κανόνας)
+    compliance-engine/src/engine.js                                (αξιολόγηση, διόρθωση, report)
+Η πλατφόρμα τον καλεί στο Stage 2, πριν από κάθε deploy, και ο admin τον ανοιγοκλείνει ανά profile στο Policy Checklist.
+
+Τι ελέγχει και τι κάνει
+    CIS 5.2.3   hostPID                    → αν είναι true: διόρθωση σε false
+    CIS 5.2.4   hostIPC                    → αν είναι true: διόρθωση σε false
+    CIS 5.2.5   hostNetwork                → αν είναι true: διόρθωση σε false
+    CIS 5.2.6   allowPrivilegeEscalation   → αν λείπει ή είναι true: διόρθωση σε false (σε κάθε container και init container)
+    CIS 5.2.12  hostPath volume            → μπλοκάρισμα του deployment (DENY)
+    CIS 5.2.13  hostPort                   → μπλοκάρισμα του deployment (DENY)
+Ειδική περίπτωση: privileged container. Το Kubernetes δεν δέχεται privileged: true μαζί με allowPrivilegeEscalation: false, οπότε μπλοκάρεται με αιτιολογία "ανήκει στον A.8.2".
+
+Στο σημερινό manifest των workstations ο κανόνας βρίσκει μία παράβαση: το 5.2.6 (το allowPrivilegeEscalation λείπει, άρα ισχύει true). Γι' αυτό ο χρήστης μπορεί να κάνει sudo. Με τον κανόνα ON το sudo σταματά να λειτουργεί. Έτσι ο κανόνας κλείνει στην πράξη και το εύρημα του Step 13.4 (sudo NOPASSWD στο upstream image), ακόμα κι αν το image δεν αλλάξει.
+
+Όταν ο κανόνας είναι OFF
+Ο έλεγχος τρέχει κανονικά, αλλά το manifest δεν αλλάζει. Το report γράφει την παράβαση ως VIOLATION_NOT_ENFORCED, μαζί με το ποιος admin απενεργοποίησε τον κανόνα και πότε. Έτσι μια εξαίρεση από τον κανόνα είναι πάντα ορατή στον auditor.
+
+Αποδεικτικά (για ISO)
+    - Report ανά workstation (workspace-logs-<pod>.json), από το κουμπί "📄 workspace-logs" δίπλα στο link του VS Code
+    - Ημερήσιο log αποφάσεων του εργαλείου (compliance-engine/data/logs/decisions-YYYY-MM-DD.jsonl)
+    - Εγγραφές COMPLIANCE στο Audit Trail της πλατφόρμας
+    - SHA-256 κάθε report, που ελέγχεται σε κάθε λήψη
+
+Κάλυψη των 5 απαιτήσεων του ISO (κατάσταση σήμερα)
+    ορίζονται        → CIS Kubernetes Benchmark v1.8, §5.2, μέσα στο module του κανόνα                    ✅
+    τεκμηριώνονται   → Policy Checklist (policy_rules), κατάλογος κανόνων στο report, SoA               ✅ (η SoA εκκρεμεί)
+    εφαρμόζονται     → Compliance Engine, αυτόματη διόρθωση στο Stage 2, fail-closed                     ✅
+    παρακολουθούνται → report ανά workstation, log αποφάσεων, Audit Trail                                ✅
+    επανεξετάζονται  → kube-bench (περιοδικά)                                                            ☐ εκκρεμεί
+Δεύτερη γραμμή άμυνας: label του Pod Security Admission στο namespace                                    ☐ εκκρεμεί (μαζί με το ξεχωριστό namespace, A.8.31)
+
+Δοκιμές
+    13 unit tests του εργαλείου και 31 integration tests (Manager + PostgreSQL + Compliance Engine), όλα PASS.
+    Δοκιμή στο VM: 08-workflow, Step 20.4.
+
+Για τη διπλωματική (σύγκριση πριν/μετά)
+    Πριν (κανόνας OFF):  CIS 5.2.6 VIOLATION_NOT_ENFORCED, sudo whoami → root
+    Μετά (κανόνας ON):   CIS 5.2.6 REMEDIATED, sudo → απορρίπτεται ("no new privileges")
+    Δείγμα report: compliance-engine/examples/sample-report.json

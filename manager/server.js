@@ -7,6 +7,8 @@ const auth = require('./auth');
 const { runMigrations } = require('./migrate');
 // Lifecycle των workstations στο k3s (χρησιμοποιεί τον Kubernetes client)
 const workstations = require('./workstations');
+// Client του Compliance Engine (ξεχωριστή υπηρεσία)
+const compliance = require('./compliance');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -150,6 +152,25 @@ app.get('/api/my/workstations', requireAuth, async (req, res) => {
   res.json(rows.map((w) => workstations.toApiWorkstation(w, req.user)));
 });
 
+// Compliance report (workspace-logs): το επίσημο report του Compliance Engine, με έλεγχο ακεραιότητας (SHA-256).
+// Ο κάτοχος για τα δικά του, ο admin για όλα.
+app.get('/api/workstations/:id/compliance-report', requireAuth, async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(404).json({ error: 'Compliance report not found' });
+  const ref = await workstations.getComplianceReportRef(req.params.id, req.user);
+  let data;
+  try {
+    data = await compliance.fetchReport(ref.report_id, ref.report_sha256.trim());
+  } catch (err) {
+    if (!(err instanceof compliance.ComplianceEngineError)) throw err;
+    await auditEvent('COMPLIANCE', 'REPORT-DOWNLOAD', 'FAILED', { workstation_id: req.params.id, report_id: ref.report_id, error: err.message }, req.user.id);
+    return res.status(502).json({ error: err.message });
+  }
+  await auditEvent('COMPLIANCE', 'REPORT-DOWNLOAD', 'SUCCESS', { workstation_id: req.params.id, report_id: ref.report_id }, req.user.id);
+  res.setHeader('Content-Disposition', `attachment; filename="workspace-logs-${ref.pod_name}.json"`);
+  res.setHeader('X-Report-SHA256', ref.report_sha256.trim());
+  res.type('application/json; charset=utf-8').send(data);
+});
+
 // Τερματισμός (ή ακύρωση αιτήματος): ο κάτοχος για τα δικά του, ο admin για όλα
 app.delete('/api/workstations/:id', requireAuth, async (req, res) => {
   if (!isUuid(req.params.id)) return res.status(404).json({ error: 'Workstation not found' });
@@ -205,7 +226,8 @@ app.post('/api/policies/toggle', requireAdmin, async (req, res) => {
   if (!Number.isInteger(ruleId) || typeof req.body.is_enabled !== 'boolean') {
     return res.status(400).json({ error: 'Μη έγκυρα δεδομένα' });
   }
-  await pool.query('UPDATE policy_rules SET is_enabled = $1, updated_at = NOW() WHERE id = $2', [req.body.is_enabled, ruleId]);
+  // Το ποιος και πότε άλλαξε τον κανόνα εμφανίζεται στο compliance report (π.χ. για απενεργοποιημένους κανόνες)
+  await pool.query('UPDATE policy_rules SET is_enabled = $1, updated_at = NOW(), updated_by = $3 WHERE id = $2', [req.body.is_enabled, ruleId, req.user.id]);
   await auditEvent('POLICY', 'POLICY-TOGGLE', 'SUCCESS', { rule_id: ruleId, is_enabled: req.body.is_enabled }, req.user.id);
   res.json({ success: true, message: 'Policy status updated' });
 });

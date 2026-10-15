@@ -69,10 +69,11 @@ Login ─► Request ─► WAITING_APPROVAL ─► Admin: Accept ─► Provisi
 ```
 1. Image Validation ─► 2. Manifest Generation ─► 3. Admission Gate ─► 4. Deploy ─► 5. Readiness ─► Audit log
    (Trivy — planned)      (+ connection token;      (Kyverno/OPA —        (Secret, Pod,  (Pod Ready)     (PostgreSQL,
-                           remediation — planned)    planned)              Service)                       with actor)
+                           Compliance Engine:        planned)              Service)                       with actor)
+                           check + auto-remediation)
 ```
 
-Each stage logs its progress (`[LOG] Step N: …`) and writes to the audit trail. Stages 1–3 are wired in as placeholders today and become real checks in Phase 2.
+Each stage logs its progress (`[LOG] Step N: …`) and writes to the audit trail. In Stage 2 the baseline manifest is sent to the standalone [Compliance Engine](compliance-engine/about.md) with the rules the admin has switched ON for the profile; the remediated manifest is deployed, a non-remediable violation blocks the deployment, and if the engine is unreachable nothing is deployed (fail-closed). The engine's compliance report (integrity-checked with SHA-256) is downloadable next to the VS Code link (**📄 workspace-logs**). Stages 1 and 3 are still placeholders.
 
 ## Tech stack
 
@@ -102,9 +103,12 @@ All profiles inherit from `workstation-base:v1` (OpenVSCode Server, non-root `US
 .
 ├── .github/workflows/deploy.yml   # CD: runs deploy.sh on the self-hosted runner on every push to main
 ├── INSTALL.md                     # step-by-step installation guide (Greek)
-├── compliance-engine/             # Phase 2: standalone compliance & auto-remediation tool (design stage)
-│   ├── about.md                   # what it is, usage modes, rule coverage, boundaries
-│   └── integration-instructions.md # what a platform must do to use it (draft)
+├── compliance-engine/             # Phase 2: standalone compliance & auto-remediation tool (no dependencies)
+│   ├── about.md                   # what it is, usage modes, rule coverage, evidence, boundaries
+│   ├── integration-instructions.md # API and what a platform must do to use it
+│   ├── src/                       # HTTP API, engine, evidence store, rules/ (one file per ISO control)
+│   ├── test/                      # npm test
+│   └── examples/sample-report.json
 ├── deploy.sh                      # pull → npm ci → pm2 restart → build/import missing images → health check
 ├── deploy/runner-sudoers          # least-privilege sudo rule for the CI runner (docker + k3s only)
 ├── database/
@@ -183,6 +187,7 @@ All endpoints except `/api/health` and `/api/auth/login` require a session cooki
 | `POST` | `/api/workstations/request` | user | Request a workstation `{ profile_id }` (admin: auto-approved) |
 | `GET` | `/api/my/workstations` | user | The caller's workstations (with tokenized link when running) |
 | `DELETE` | `/api/workstations/:id` | owner / admin | Terminate a workstation (Pod + Service + Secret) or cancel a waiting request |
+| `GET` | `/api/workstations/:id/compliance-report` | owner / admin | Download the Compliance Engine report (`workspace-logs-<pod>.json`, SHA-256 verified) |
 | `GET` | `/api/approvals`, `/api/approvals/count` | admin | Requests waiting for approval |
 | `POST` | `/api/workstations/:id/approve` | admin | Approve and start provisioning |
 | `POST` | `/api/workstations/:id/reject` | admin | Reject `{ note }` |
@@ -227,8 +232,10 @@ Configuration (`manager/.env`): `SESSION_TTL_HOURS` (default `10`), `REPORT_TIME
 - [x] **CI/CD** — self-hosted runner, fail-fast deploy script, automatic image rebuild/import, health check
 - [x] **Operations** — nightly database backups and audit archives, least-privilege runner permissions
 - [ ] **Phase 2 — compliance engine** — built as a standalone, portable tool in [`compliance-engine/`](compliance-engine/about.md) (API, admission webhook, CLI, own UI); the platform only calls it before deploying
+  - [x] Engine API (`/evaluate`), evidence store (per-workstation report with SHA-256, daily decision log), platform integration (fail-closed), downloadable report
+  - [x] Rule A.8.9 Configuration management (CIS Kubernetes 5.2.3–5.2.6, 5.2.12, 5.2.13), switchable per profile
   - [ ] Stage 1: image scanning with Trivy (0 Critical / 0 High gate)
-  - [ ] Stage 2: manifest validation & auto-remediation (securityContext, non-root, read-only root FS, dropped capabilities, resource limits, NetworkPolicies)
+  - [ ] Stage 2: remaining manifest rules (non-root, read-only root FS, dropped capabilities, resource limits, NetworkPolicies)
   - [ ] Stage 3: admission gate (Kyverno or OPA Gatekeeper)
   - [ ] Stage 4: bootstrap verification
   - [ ] Live remediation status in the UI and structured JSON audit evidence

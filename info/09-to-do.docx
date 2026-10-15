@@ -122,3 +122,15 @@ To-Do: Κλείσιμο του DevOps Κομματιού
 ☐ Ξεχωριστό namespace για τα workstations (όχι default)
 ☐ Υπογραφή των images με Cosign (A.8.4)
 ☐ Ingress με TLS (A.8.24, A.8.21). Το k3s έχει Traefik, όχι NGINX
+
+
+Ενημέρωση 15/10/2026 12:25: Πρώτος κανόνας (A.8.9)
+
+☑ Πλάνο του σκελετού του Compliance Engine
+☑ Υλοποίηση του A.8.9 ως πρώτου κανόνα (08-workflow, Step 20)
+☐ Merge του branch phase2/compliance-engine στο main και push (πρώτα να λυθεί το SSL σφάλμα του git push από τα Windows)
+☐ Δοκιμή στο VM με τον κανόνα ON και OFF (08-workflow, Step 20.4) και screenshots
+☐ A.8.9 επανεξέταση: kube-bench (περιοδικά) και label του Pod Security Admission στο namespace
+☐ Backup των αποδεικτικών του Compliance Engine (compliance-engine/data/) στο backup.sh
+☐ Διόρθωση: το backup.sh κατεβάζει τα audit logs χωρίς σύνδεση, ενώ το endpoint θέλει admin από το Step 13 (08-workflow, Step 20.5)
+☐ Ανάλυση και υλοποίηση του επόμενου κανόνα: A.8.28
